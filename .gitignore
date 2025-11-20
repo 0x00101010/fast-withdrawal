@@ -10,7 +10,4 @@ out/
 # Docs
 docs/
 
-# Dotenv file
-.env
-
 IMPLEMENTATION_PLAN.md
