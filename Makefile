@@ -17,6 +17,11 @@ help:
 	@echo "  make build                 Compile contracts"
 	@echo "  make clean-build           Clean and rebuild"
 	@echo ""
+	@echo "Code Quality Commands:"
+	@echo "  make fmt                   Format code with forge fmt"
+	@echo "  make lint                  Run forge lint"
+	@echo "  make pr                    Run all pre-PR checks (fmt, lint, build, test)"
+	@echo ""
 	@echo "Analysis Commands:"
 	@echo "  make slither               Run Slither static analysis"
 	@echo "  make mythril               Run Mythril security analysis"
@@ -93,6 +98,27 @@ clean:
 
 .PHONY: clean-build
 clean-build: clean build
+
+##
+# Code Quality
+##
+.PHONY: fmt
+fmt:
+	forge fmt
+
+.PHONY: lint
+lint:
+	forge lint
+
+.PHONY: pr
+pr: clean fmt lint build test
+	@echo ""
+	@echo "✅ All pre-PR checks passed!"
+	@echo "   - Code formatted"
+	@echo "   - Linting passed"
+	@echo "   - Build successful"
+	@echo "   - All tests passed"
+	@echo ""
 
 ##
 # Static Analysis
