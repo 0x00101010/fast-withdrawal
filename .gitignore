@@ -9,5 +9,6 @@ out/
 
 # Docs
 docs/
+lib/optimism/
 
 IMPLEMENTATION_PLAN.md
