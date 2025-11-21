@@ -1,5 +1,5 @@
 [profile.default]
-src = "src"
+src = "contracts"
 out = "out"
 libs = ["lib"]
 solc_version = "0.8.30"
@@ -10,6 +10,7 @@ remappings = [
     "@eth-optimism-bedrock/=lib/optimism/packages/contracts-bedrock/",
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
     "@lib-keccak/=lib/optimism/packages/contracts-bedrock/lib/lib-keccak/contracts/lib/",
+    "src/=lib/optimism/packages/contracts-bedrock/src/",
 ]
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

@@ -2,6 +2,9 @@
 pragma solidity 0.8.30;
 
 import {IOptimismPortal2} from "@eth-optimism-bedrock/interfaces/L1/IOptimismPortal2.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Types} from "src/libraries/Types.sol";
+import {Hashing} from "src/libraries/Hashing.sol";
 
 /**
  * @title WithdrawalLiquidityPool
@@ -24,7 +27,7 @@ import {IOptimismPortal2} from "@eth-optimism-bedrock/interfaces/L1/IOptimismPor
  * Phase 2 Enhancements (Future):
  * - 1-day finalization period
  */
-contract WithdrawalLiquidityPool {
+contract WithdrawalLiquidityPool is ReentrancyGuard {
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -34,6 +37,9 @@ contract WithdrawalLiquidityPool {
     error InsufficientShares();
     error InsufficientLiquidity();
     error Unauthorized();
+    error AlreadyFulfilled();
+    error AlreadySettled();
+    error InvalidFeeRate();
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -62,6 +68,22 @@ contract WithdrawalLiquidityPool {
      */
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
+    /**
+     * @notice Emitted when pool fulfills a withdrawal request
+     * @param withdrawalHash The hash of the withdrawal transaction
+     * @param user The address receiving the instant withdrawal
+     * @param amount The amount of ETH provided to user
+     * @param feeRate The fee rate locked for this withdrawal (basis points)
+     */
+    event WithdrawalFulfilled(bytes32 indexed withdrawalHash, address indexed user, uint256 amount, uint256 feeRate);
+
+    /**
+     * @notice Emitted when fee rate is updated
+     * @param oldRate The previous fee rate
+     * @param newRate The new fee rate
+     */
+    event FeeRateUpdated(uint256 oldRate, uint256 newRate);
+
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
@@ -83,6 +105,23 @@ contract WithdrawalLiquidityPool {
 
     /// @notice Available liquidity for new withdrawals (totalLiquidity - locked liquidity)
     uint256 public availableLiquidity;
+
+    /// @notice Struct to track withdrawal fulfillment and settlement
+    struct WithdrawalRequest {
+        uint256 amount; // Amount of ETH provided to user
+        uint256 feeRate; // Fee rate locked at time of fulfillment (basis points)
+        bool fulfilled; // Whether this withdrawal has been fulfilled
+        bool settled; // Whether OptimismPortal has sent ETH back
+    }
+
+    /// @notice Mapping of withdrawal hash to request details
+    mapping(bytes32 => WithdrawalRequest) public withdrawalRequests;
+
+    /// @notice Current fee rate in basis points (e.g., 50 = 0.5%)
+    uint256 public feeRate;
+
+    /// @notice Maximum allowed fee rate (10% = 1000 basis points)
+    uint256 public constant MAX_FEE_RATE = 1000;
 
     /*//////////////////////////////////////////////////////////////
                                MODIFIERS
@@ -153,12 +192,79 @@ contract WithdrawalLiquidityPool {
     }
 
     /**
+     * @notice Provides instant liquidity for a withdrawal request
+     * @param withdrawal The full withdrawal transaction from L2
+     * @dev LPs must verify withdrawal validity off-chain before calling this function.
+     *      The recipient is decoded from withdrawal.data with fallback to withdrawal.sender.
+     *      Fee is deducted from the amount sent to user.
+     *      Fee rate is locked at time of fulfillment to prevent manipulation.
+     *
+     *      Accounting:
+     *      - withdrawal.value is the full L2 withdrawal amount
+     *      - User receives: withdrawal.value - fee
+     *      - Pool locks: withdrawal.value (will be returned by OptimismPortal)
+     *      - Pool profit after settlement: fee amount
+     *
+     *      Security considerations:
+     *      - LPs must verify L2 event authenticity off-chain
+     *      - LPs must verify sender legitimacy
+     *      - withdrawal.target should be this contract (for 7-day settlement)
+     *      - Recipient decoding: withdrawal.data (if >= 32 bytes) or withdrawal.sender (fallback)
+     */
+    function provideLiquidity(Types.WithdrawalTransaction memory withdrawal) external nonReentrant {
+        // Compute withdrawal hash from transaction data
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        // Decode recipient from data, fallback to sender if empty
+        address recipient;
+        if (withdrawal.data.length >= 32) {
+            // Expected format: abi.encode(address) which is left-padded to 32 bytes.
+            // abi.decode will read the first 32 bytes as an address and ignore any extra bytes.
+            recipient = abi.decode(withdrawal.data, (address));
+        } else {
+            // Fallback: send to L2 sender
+            recipient = withdrawal.sender;
+        }
+
+        // Validation checks
+        if (withdrawal.value == 0) revert ZeroAmount();
+        if (recipient == address(0)) revert ZeroAddress();
+        if (withdrawalRequests[withdrawalHash].fulfilled) {
+            revert AlreadyFulfilled();
+        }
+        if (withdrawal.value > availableLiquidity) {
+            revert InsufficientLiquidity();
+        }
+
+        // Lock current fee rate for this withdrawal
+        uint256 lockedFeeRate = feeRate;
+
+        // Calculate fee and amount to send to user
+        uint256 fee = (withdrawal.value * lockedFeeRate) / 10000;
+        uint256 amountToUser = withdrawal.value - fee;
+
+        // Update state before external call (checks-effects-interactions)
+        // Lock the FULL withdrawal amount (we'll get this back from OptimismPortal)
+        availableLiquidity -= withdrawal.value;
+
+        // Store withdrawal request with full amount
+        withdrawalRequests[withdrawalHash] =
+            WithdrawalRequest({amount: withdrawal.value, feeRate: lockedFeeRate, fulfilled: true, settled: false});
+
+        // Transfer ETH to recipient (after deducting fee)
+        (bool success,) = recipient.call{value: amountToUser}("");
+        require(success, "ETH transfer failed");
+
+        emit WithdrawalFulfilled(withdrawalHash, recipient, amountToUser, lockedFeeRate);
+    }
+
+    /**
      * @notice Allows LPs to withdraw ETH by burning shares
      * @param shares The number of shares to burn
      * @dev Withdrawal amount = (shares * totalLiquidity) / totalShares
      *      Only available liquidity can be withdrawn (not locked in pending settlements)
      */
-    function withdrawLiquidity(uint256 shares) external {
+    function withdrawLiquidity(uint256 shares) external nonReentrant {
         if (shares == 0) revert ZeroAmount();
         if (liquidityShares[msg.sender] < shares) revert InsufficientShares();
 

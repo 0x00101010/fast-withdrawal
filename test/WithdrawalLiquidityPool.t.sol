@@ -2,7 +2,7 @@
 pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {WithdrawalLiquidityPool} from "../src/WithdrawalLiquidityPool.sol";
+import {WithdrawalLiquidityPool} from "../contracts/WithdrawalLiquidityPool.sol";
 
 /**
  * @title WithdrawalLiquidityPoolTest
