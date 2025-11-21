@@ -339,4 +339,47 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
     function getShares(address provider) external view returns (uint256) {
         return liquidityShares[provider];
     }
+
+    /*//////////////////////////////////////////////////////////////
+                          FEE MANAGEMENT
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Updates the fee rate for new withdrawals
+     * @param newRate The new fee rate in basis points (e.g., 50 = 0.5%)
+     * @dev Only owner can call this function
+     *      Fee rate is capped at MAX_FEE_RATE (10%)
+     *      This only affects NEW withdrawals - existing withdrawals keep their locked rate
+     */
+    function setFeeRate(uint256 newRate) external onlyOwner {
+        if (newRate > MAX_FEE_RATE) revert InvalidFeeRate();
+
+        uint256 oldRate = feeRate;
+        feeRate = newRate;
+
+        emit FeeRateUpdated(oldRate, newRate);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          SETTLEMENT
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Receives ETH from any source
+     * @dev Primary use: OptimismPortal2 sends ETH after withdrawal finalization (7-day challenge period)
+     *      Secondary use: Anyone can send ETH for reimbursement or emergency situations
+     *
+     *      WARNING: If you send ETH to this contract and you're NOT the OptimismPortal,
+     *      your funds become a donation to the LP pool and CANNOT be recovered.
+     *
+     *      In Stage 3, portal deposits will:
+     *      - Match incoming ETH to withdrawal hash
+     *      - Calculate and credit fees to pool
+     *      - Unlock liquidity
+     *      - Mark withdrawal as settled
+     */
+    receive() external payable {
+        // Accept ETH from anyone (portal deposits will be handled in Stage 3)
+        // Non-portal deposits are effectively donations to the pool
+    }
 }
