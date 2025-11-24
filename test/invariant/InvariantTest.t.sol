@@ -163,7 +163,10 @@ contract Handler is Test {
 
         // Create some actors
         for (uint256 i = 0; i < 5; i++) {
+            // casting to 'uint160' is safe because i is small (0-4) and 1000+i, 2000+i fit in uint160
+            // forge-lint: disable-next-line(unsafe-typecast)
             liquidityProviders.push(address(uint160(1000 + i)));
+            // forge-lint: disable-next-line(unsafe-typecast)
             users.push(address(uint160(2000 + i)));
 
             // Fund them
@@ -237,12 +240,7 @@ contract Handler is Test {
         // Create withdrawal
         nonce++;
         Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
-            nonce: nonce,
-            sender: user,
-            target: address(pool),
-            value: amount,
-            gasLimit: 100000,
-            data: ""
+            nonce: nonce, sender: user, target: address(pool), value: amount, gasLimit: 100000, data: ""
         });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
@@ -322,12 +320,7 @@ contract Handler is Test {
         // Create withdrawal
         nonce++;
         Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
-            nonce: nonce,
-            sender: user,
-            target: address(pool),
-            value: amount,
-            gasLimit: 100000,
-            data: ""
+            nonce: nonce, sender: user, target: address(pool), value: amount, gasLimit: 100000, data: ""
         });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
@@ -350,8 +343,9 @@ contract Handler is Test {
         newRate = bound(newRate, 0, 1000); // 0-10%
 
         try pool.setFeeRate(newRate) {
-            // Fee rate updated
-        } catch {
+        // Fee rate updated
+        }
+            catch {
             // Update failed, that's ok
         }
     }

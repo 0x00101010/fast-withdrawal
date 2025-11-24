@@ -37,12 +37,7 @@ contract IntegrationTest is Test {
         returns (Types.WithdrawalTransaction memory)
     {
         return Types.WithdrawalTransaction({
-            nonce: nonce,
-            sender: sender,
-            target: address(pool),
-            value: value,
-            gasLimit: 100000,
-            data: data
+            nonce: nonce, sender: sender, target: address(pool), value: value, gasLimit: 100000, data: data
         });
     }
 
@@ -221,6 +216,8 @@ contract IntegrationTest is Test {
         // Fulfill 10 withdrawals
         Types.WithdrawalTransaction[] memory withdrawals = new Types.WithdrawalTransaction[](10);
         for (uint256 i = 0; i < 10; i++) {
+            // casting to 'uint160' is safe because i is small (0-9) and 1000+i fits in uint160
+            // forge-lint: disable-next-line(unsafe-typecast)
             address user = address(uint160(1000 + i));
             withdrawals[i] = createWithdrawal(i + 1, user, 1 ether, "");
 
@@ -258,8 +255,10 @@ contract IntegrationTest is Test {
         // Process some profitable withdrawals
         pool.setFeeRate(500);
         for (uint256 i = 0; i < 5; i++) {
-            Types.WithdrawalTransaction memory withdrawal =
-                createWithdrawal(i + 1, address(uint160(1000 + i)), 1 ether, "");
+            // casting to 'uint160' is safe because i is small (0-4) and 1000+i fits in uint160
+            // forge-lint: disable-next-line(unsafe-typecast)
+            address user = address(uint160(1000 + i));
+            Types.WithdrawalTransaction memory withdrawal = createWithdrawal(i + 1, user, 1 ether, "");
 
             vm.prank(lp1);
             pool.provideLiquidity(withdrawal);

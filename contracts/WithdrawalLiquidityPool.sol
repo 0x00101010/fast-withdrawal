@@ -276,11 +276,7 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
 
         // Store withdrawal request with full amount (needed for settlement)
         withdrawalRequests[withdrawalHash] = WithdrawalRequest({
-            amount: withdrawal.value,
-            feeRate: lockedFeeRate,
-            fulfilled: true,
-            settled: false,
-            claimed: false
+            amount: withdrawal.value, feeRate: lockedFeeRate, fulfilled: true, settled: false, claimed: false
         });
 
         // Transfer ETH to recipient (after deducting fee)
