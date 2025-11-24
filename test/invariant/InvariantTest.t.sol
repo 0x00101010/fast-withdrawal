@@ -3,7 +3,9 @@ pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
-import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
+import {
+    WithdrawalLiquidityPool
+} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 import {MockOptimismPortal} from "../mocks/MockOptimismPortal.sol";
@@ -46,7 +48,11 @@ contract InvariantTest is Test {
         uint256 total = pool.totalLiquidity();
         uint256 available = pool.availableLiquidity();
 
-        assertGe(total, available, "Total liquidity must be >= available liquidity");
+        assertGe(
+            total,
+            available,
+            "Total liquidity must be >= available liquidity"
+        );
     }
 
     /**
@@ -58,7 +64,11 @@ contract InvariantTest is Test {
         uint256 previousShareValue = handler.maxShareValue();
 
         // Share value should never decrease (it can only increase from fees or stay same)
-        assertGe(currentShareValue, previousShareValue, "Share value should never decrease");
+        assertGe(
+            currentShareValue,
+            previousShareValue,
+            "Share value should never decrease"
+        );
     }
 
     /**
@@ -88,16 +98,6 @@ contract InvariantTest is Test {
     }
 
     /**
-     * @notice Invariant 4: Each withdrawal can only be fulfilled once
-     * @dev Once fulfilled flag is set, it can never be cleared
-     */
-    function invariant_WithdrawalFulfilledOnce() public view {
-        // This is enforced by the handler - it tracks all fulfilled withdrawals
-        // and never attempts to fulfill the same withdrawal twice
-        assertTrue(true, "Handler ensures no double fulfillment");
-    }
-
-    /**
      * @notice Invariant 5: Contract ETH balance should match accounting
      * @dev When LPs provide liquidity, ETH is sent to users, so contract balance may be less than totalLiquidity
      *      The difference represents fulfilled but unsettled withdrawals where users already got paid
@@ -109,7 +109,11 @@ contract InvariantTest is Test {
         // When LPs provide liquidity, ETH is sent to users, reducing contract balance
         // The locked amount (totalLiquidity - availableLiquidity) represents ETH already sent to users
         // Contract balance should always be >= available liquidity
-        assertGe(contractBalance, availableLiquidity, "Contract ETH should be >= available liquidity");
+        assertGe(
+            contractBalance,
+            availableLiquidity,
+            "Contract ETH should be >= available liquidity"
+        );
     }
 
     /**
@@ -119,7 +123,11 @@ contract InvariantTest is Test {
         uint256 available = pool.availableLiquidity();
         uint256 total = pool.totalLiquidity();
 
-        assertLe(available, total, "Available liquidity cannot exceed total liquidity");
+        assertLe(
+            available,
+            total,
+            "Available liquidity cannot exceed total liquidity"
+        );
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -201,8 +209,31 @@ contract Handler is Test {
             if (currentShareValue > maxShareValue) {
                 maxShareValue = currentShareValue;
             }
-        } catch {
-            // Deposit failed, that's ok
+        } catch Error(string memory reason) {
+            // Expected reverts with reason strings
+            // For depositLiquidity, only ZeroAmount is expected, but we bound amount >= 0.01
+            // So any revert here is unexpected
+            revert(
+                string.concat("Unexpected depositLiquidity revert: ", reason)
+            );
+        } catch (bytes memory lowLevelData) {
+            // Check if it's an expected custom error
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 selector = bytes4(lowLevelData);
+
+            // ZeroAmount() - but shouldn't happen since we bound amount >= 0.01
+            if (selector == WithdrawalLiquidityPool.ZeroAmount.selector) {
+                // This is unexpected given our bounds
+                revert(
+                    "Unexpected ZeroAmount in depositLiquidity (amount is bounded >= 0.01)"
+                );
+            }
+
+            // Any other error is unexpected
+            revert("Unexpected low-level revert in depositLiquidity");
         }
     }
 
@@ -223,12 +254,40 @@ contract Handler is Test {
         vm.prank(lp);
         try pool.withdrawLiquidity(sharesToWithdraw) {
             withdrawCount++;
-        } catch {
-            // Withdrawal failed, that's ok
+        } catch Error(string memory reason) {
+            // Unexpected string revert
+            revert(
+                string.concat("Unexpected withdrawLiquidity revert: ", reason)
+            );
+        } catch (bytes memory lowLevelData) {
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 selector = bytes4(lowLevelData);
+
+            // Expected errors that can legitimately happen during fuzzing:
+            if (
+                selector ==
+                WithdrawalLiquidityPool.InsufficientShares.selector ||
+                selector ==
+                WithdrawalLiquidityPool.InsufficientLiquidity.selector ||
+                selector == WithdrawalLiquidityPool.ZeroAmount.selector
+            ) {
+                // Expected failure, ignore
+                return;
+            }
+
+            // Unexpected error
+            revert("Unexpected low-level revert in withdrawLiquidity");
         }
     }
 
-    function provideLiquidity(uint256 lpIndex, uint256 userIndex, uint256 amount) public {
+    function provideLiquidity(
+        uint256 lpIndex,
+        uint256 userIndex,
+        uint256 amount
+    ) public {
         // Bound inputs
         lpIndex = bound(lpIndex, 0, liquidityProviders.length - 1);
         userIndex = bound(userIndex, 0, users.length - 1);
@@ -239,9 +298,15 @@ contract Handler is Test {
 
         // Create withdrawal
         nonce++;
-        Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
-            nonce: nonce, sender: user, target: address(pool), value: amount, gasLimit: 100000, data: ""
-        });
+        Types.WithdrawalTransaction memory withdrawal = Types
+            .WithdrawalTransaction({
+                nonce: nonce,
+                sender: user,
+                target: address(pool),
+                value: amount,
+                gasLimit: 100000,
+                data: ""
+            });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -266,8 +331,30 @@ contract Handler is Test {
             if (currentShareValue > maxShareValue) {
                 maxShareValue = currentShareValue;
             }
-        } catch {
-            // Provide failed, that's ok
+        } catch Error(string memory reason) {
+            // Unexpected string revert
+            revert(
+                string.concat("Unexpected provideLiquidity revert: ", reason)
+            );
+        } catch (bytes memory lowLevelData) {
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 selector = bytes4(lowLevelData);
+
+            // Expected errors:
+            if (
+                selector == WithdrawalLiquidityPool.AlreadyFulfilled.selector ||
+                selector ==
+                WithdrawalLiquidityPool.InsufficientLiquidity.selector ||
+                selector == WithdrawalLiquidityPool.ZeroAmount.selector ||
+                selector == WithdrawalLiquidityPool.ZeroAddress.selector
+            ) {
+                // Expected failure, ignore
+                return;
+            }
+
+            // Unexpected error
+            revert("Unexpected low-level revert in provideLiquidity");
         }
     }
 
@@ -279,14 +366,19 @@ contract Handler is Test {
         address user = users[userIndex];
 
         // Create withdrawal that might have been fulfilled
-        Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
-            nonce: bound(nonce > 0 ? nonce - 1 : 1, 1, nonce > 0 ? nonce : 1),
-            sender: user,
-            target: address(pool),
-            value: amount,
-            gasLimit: 100000,
-            data: ""
-        });
+        Types.WithdrawalTransaction memory withdrawal = Types
+            .WithdrawalTransaction({
+                nonce: bound(
+                    nonce > 0 ? nonce - 1 : 1,
+                    1,
+                    nonce > 0 ? nonce : 1
+                ),
+                sender: user,
+                target: address(pool),
+                value: amount,
+                gasLimit: 100000,
+                data: ""
+            });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -305,8 +397,27 @@ contract Handler is Test {
             if (currentShareValue > maxShareValue) {
                 maxShareValue = currentShareValue;
             }
-        } catch {
-            // Settlement failed, that's ok
+        } catch Error(string memory reason) {
+            // Unexpected string revert
+            revert(
+                string.concat("Unexpected settleWithdrawal revert: ", reason)
+            );
+        } catch (bytes memory lowLevelData) {
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 selector = bytes4(lowLevelData);
+
+            // Expected errors:
+            if (
+                selector == WithdrawalLiquidityPool.NotFulfilled.selector ||
+                selector == WithdrawalLiquidityPool.AlreadySettled.selector
+            ) {
+                // Expected failure, ignore
+                return;
+            }
+
+            // Unexpected error
+            revert("Unexpected low-level revert in settleWithdrawal");
         }
     }
 
@@ -319,9 +430,15 @@ contract Handler is Test {
 
         // Create withdrawal
         nonce++;
-        Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
-            nonce: nonce, sender: user, target: address(pool), value: amount, gasLimit: 100000, data: ""
-        });
+        Types.WithdrawalTransaction memory withdrawal = Types
+            .WithdrawalTransaction({
+                nonce: nonce,
+                sender: user,
+                target: address(pool),
+                value: amount,
+                gasLimit: 100000,
+                data: ""
+            });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -334,8 +451,34 @@ contract Handler is Test {
         // Claim (portal will send ETH automatically)
         try pool.claimFallbackWithdrawal(withdrawal) {
             claimCount++;
-        } catch {
-            // Claim failed, that's ok
+        } catch Error(string memory reason) {
+            // Unexpected string revert
+            revert(
+                string.concat(
+                    "Unexpected claimFallbackWithdrawal revert: ",
+                    reason
+                )
+            );
+        } catch (bytes memory lowLevelData) {
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 selector = bytes4(lowLevelData);
+
+            // Expected errors:
+            if (
+                selector ==
+                WithdrawalLiquidityPool.WithdrawalFulfilledByLP.selector ||
+                selector == WithdrawalLiquidityPool.AlreadyClaimed.selector ||
+                selector == WithdrawalLiquidityPool.ZeroAmount.selector ||
+                selector == WithdrawalLiquidityPool.ZeroAddress.selector
+            ) {
+                // Expected failure, ignore
+                return;
+            }
+
+            // Unexpected error (could also be portal revert if not yet finalized)
+            // We accept this as it's testing the fallback path
+            return;
         }
     }
 
@@ -343,10 +486,29 @@ contract Handler is Test {
         newRate = bound(newRate, 0, 1000); // 0-10%
 
         try pool.setFeeRate(newRate) {
-        // Fee rate updated
-        }
-            catch {
-            // Update failed, that's ok
+            // Fee rate updated
+        } catch Error(string memory reason) {
+            // Unexpected string revert
+            revert(string.concat("Unexpected setFeeRate revert: ", reason));
+        } catch (bytes memory lowLevelData) {
+            // casting to 'bytes4' is safe because error data always includes 4-byte selector
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes4 selector = bytes4(lowLevelData);
+
+            // Expected errors:
+            if (
+                selector == WithdrawalLiquidityPool.Unauthorized.selector ||
+                selector == WithdrawalLiquidityPool.InvalidFeeRate.selector
+            ) {
+                // Expected failure (only owner can call, rate must be <= MAX)
+                // Unauthorized shouldn't happen since handler is deployed by test
+                // InvalidFeeRate shouldn't happen since we bound to 0-1000
+                // But both are technically valid error cases
+                return;
+            }
+
+            // Unexpected error
+            revert("Unexpected low-level revert in setFeeRate");
         }
     }
 
