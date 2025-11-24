@@ -6,15 +6,30 @@ import {WithdrawalLiquidityPool} from "../contracts/WithdrawalLiquidityPool.sol"
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 
+// Mock OptimismPortal contract for testing
+contract MockOptimismPortal {
+    bool public shouldRevert;
+
+    function setShouldRevert(bool _shouldRevert) external {
+        shouldRevert = _shouldRevert;
+    }
+
+    function finalizeWithdrawalTransaction(Types.WithdrawalTransaction calldata) external payable {
+        if (shouldRevert) {
+            revert("Already finalized");
+        }
+    }
+}
+
 /**
  * @title WithdrawalLiquidityPoolTest
  * @notice Unit tests for Stage 1: Basic LP deposit/withdrawal functionality
  */
 contract WithdrawalLiquidityPoolTest is Test {
     WithdrawalLiquidityPool public pool;
+    MockOptimismPortal public optimismPortal;
 
     address public owner = address(this);
-    address public optimismPortal = address(0x1234); // Mock portal address
     address public lp1 = address(0x1);
     address public lp2 = address(0x2);
     address public lp3 = address(0x3);
@@ -26,7 +41,8 @@ contract WithdrawalLiquidityPoolTest is Test {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     function setUp() public {
-        pool = new WithdrawalLiquidityPool(payable(optimismPortal));
+        optimismPortal = new MockOptimismPortal();
+        pool = new WithdrawalLiquidityPool(payable(address(optimismPortal)));
 
         // Fund test LPs
         vm.deal(lp1, INITIAL_BALANCE);
@@ -39,7 +55,7 @@ contract WithdrawalLiquidityPoolTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function test_Constructor_SetsPortalAddress() public view {
-        assertEq(address(pool.OPTIMISM_PORTAL()), optimismPortal);
+        assertEq(address(pool.OPTIMISM_PORTAL()), address(optimismPortal));
     }
 
     function test_Constructor_SetsOwner() public view {
@@ -54,7 +70,7 @@ contract WithdrawalLiquidityPoolTest is Test {
     function test_Constructor_EmitsOwnershipTransferred() public {
         vm.expectEmit(true, true, false, false);
         emit OwnershipTransferred(address(0), address(this));
-        new WithdrawalLiquidityPool(payable(optimismPortal));
+        new WithdrawalLiquidityPool(payable(address(optimismPortal)));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -509,8 +525,8 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Verify user received amount after fee
         assertEq(user.balance, expectedUserAmount);
 
-        // Verify full amount locked in pool
-        assertEq(pool.availableLiquidity(), 9 ether); // 10 - 1 locked
+        // Verify only amountToUser is locked, fee stays available
+        assertEq(pool.availableLiquidity(), 9.05 ether); // 10 - 0.95 locked
     }
 
     function test_ProvideLiquidity_RevertsOnZeroAmount() public {
@@ -647,10 +663,10 @@ contract WithdrawalLiquidityPoolTest is Test {
 
     function test_Receive_AcceptsFromPortal() public {
         // Fund the portal address
-        vm.deal(optimismPortal, 10 ether);
+        vm.deal(address(optimismPortal), 10 ether);
 
         // Portal sends ETH
-        vm.prank(optimismPortal);
+        vm.prank(address(optimismPortal));
         (bool success,) = address(pool).call{value: 1 ether}("");
         assertTrue(success);
 
@@ -712,5 +728,400 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Invariant: totalLiquidity >= availableLiquidity
         assertGe(pool.totalLiquidity(), pool.availableLiquidity());
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    STAGE 3: SETTLEMENT TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    event WithdrawalSettled(bytes32 indexed withdrawalHash, uint256 reimbursement, uint256 fee);
+    event WithdrawalAlreadyFinalized(bytes32 indexed withdrawalHash);
+
+    function test_SettleWithdrawal_Success() public {
+        // Setup: Set fee rate and provide liquidity
+        pool.setFeeRate(500); // 5%
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        // Fulfill withdrawal
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Verify state before settlement
+        assertEq(pool.availableLiquidity(), 9.05 ether); // 10 - 0.95 locked, fee stays available
+        assertEq(pool.totalLiquidity(), 10 ether);
+
+        // Fund portal to send ETH back
+        vm.deal(address(optimismPortal), 10 ether);
+
+        // Mock the portal finalizing the withdrawal (portal sends ETH back)
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // Settle withdrawal
+        uint256 expectedFee = 0.05 ether; // 5% of 1 ETH
+        uint256 expectedReimbursement = 0.95 ether;
+
+        vm.expectEmit(true, false, false, true);
+        emit WithdrawalSettled(withdrawalHash, expectedReimbursement, expectedFee);
+
+        pool.settleWithdrawal(withdrawal);
+
+        // Verify state after settlement
+        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(withdrawalHash);
+        assertTrue(fulfilled);
+        assertTrue(settled);
+        assertEq(amount, 1 ether);
+        assertEq(lockedFeeRate, 500);
+
+        // Verify accounting: portal sent 1 ETH, we add it to available and fee to total
+        assertEq(pool.availableLiquidity(), 10.05 ether); // 9.05 + 1 from portal
+        assertEq(pool.totalLiquidity(), 10.05 ether); // 10 + 0.05 fee credited
+
+        // Verify share value increased
+        uint256 newShareValue = pool.shareValue();
+        assertGt(newShareValue, 1e18); // Greater than 1:1
+    }
+
+    function test_SettleWithdrawal_AlreadyFinalized() public {
+        // Setup and fulfill
+        pool.setFeeRate(500);
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Someone else already finalized on the portal
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // Make portal revert to simulate already finalized
+        optimismPortal.setShouldRevert(true);
+
+        // Expect the "already finalized" event
+        vm.expectEmit(true, false, false, false);
+        emit WithdrawalAlreadyFinalized(withdrawalHash);
+
+        // Settlement should still work (just updates accounting)
+        pool.settleWithdrawal(withdrawal);
+
+        // Verify settlement completed
+        (, bool settled,,) = pool.getWithdrawalStatus(withdrawalHash);
+        assertTrue(settled);
+    }
+
+    function test_SettleWithdrawal_RevertsIfNotFulfilled() public {
+        // Create withdrawal but don't fulfill it
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+
+        vm.expectRevert(WithdrawalLiquidityPool.NotFulfilled.selector);
+        pool.settleWithdrawal(withdrawal);
+    }
+
+    function test_SettleWithdrawal_RevertsIfAlreadySettled() public {
+        // Setup, fulfill, and settle
+        pool.setFeeRate(500);
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Fund and settle
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal);
+
+        // Try to settle again
+        vm.expectRevert(WithdrawalLiquidityPool.AlreadySettled.selector);
+        pool.settleWithdrawal(withdrawal);
+    }
+
+    function test_SettleWithdrawal_ZeroFeeRate() public {
+        // Setup with 0% fee
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Fund and settle
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal);
+
+        // With 0% fee, all liquidity is reimbursement
+        assertEq(pool.availableLiquidity(), 10 ether); // Back to original
+        assertEq(pool.totalLiquidity(), 10 ether); // No fee credited
+    }
+
+    function test_SettleWithdrawal_MaxFeeRate() public {
+        // Setup with max fee (10%)
+        pool.setFeeRate(1000);
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Fund and settle
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal);
+
+        // 10% fee = 0.1 ETH
+        assertEq(pool.availableLiquidity(), 10.1 ether); // 9.1 + 1 from portal
+        assertEq(pool.totalLiquidity(), 10.1 ether); // 10 + 0.1 fee
+    }
+
+    function test_SettleWithdrawal_MultipleConcurrentSettlements() public {
+        // Setup
+        pool.setFeeRate(500); // 5%
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        // Fulfill 3 withdrawals
+        Types.WithdrawalTransaction[] memory withdrawals = new Types.WithdrawalTransaction[](3);
+        for (uint256 i = 0; i < 3; i++) {
+            // casting to 'uint160' is safe because i is small and 1000 + i fits in uint160
+            // forge-lint: disable-next-line(unsafe-typecast)
+            address user = address(uint160(1000 + i));
+            withdrawals[i] = createWithdrawal(i + 1, user, 1 ether, "");
+
+            vm.prank(lp1);
+            pool.provideLiquidity(withdrawals[i]);
+        }
+
+        // Verify only amountToUser locked (3 * 0.95 = 2.85), fees stay available
+        assertEq(pool.availableLiquidity(), 7.15 ether); // 10 - 2.85 locked
+
+        // Fund portal
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 3 ether}("");
+        require(success);
+
+        // Settle all 3
+        for (uint256 i = 0; i < 3; i++) {
+            pool.settleWithdrawal(withdrawals[i]);
+        }
+
+        // Total fees: 3 * 0.05 = 0.15 ETH
+        assertEq(pool.availableLiquidity(), 10.15 ether); // 7.15 + 3 from portal
+        assertEq(pool.totalLiquidity(), 10.15 ether); // 10 + 0.15 fees
+    }
+
+    function test_SettleWithdrawal_ShareValueIncreaseBenefitsAllLPs() public {
+        // Setup: 2 LPs deposit
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 5 ether}();
+
+        vm.prank(lp2);
+        pool.depositLiquidity{value: 5 ether}();
+
+        // Set fee and fulfill withdrawal
+        pool.setFeeRate(500); // 5%
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Record share values before settlement
+        uint256 lp1SharesBefore = pool.getShares(lp1);
+        uint256 lp2SharesBefore = pool.getShares(lp2);
+        uint256 shareValueBefore = pool.shareValue();
+
+        // Settle withdrawal
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal);
+
+        // Share counts unchanged
+        assertEq(pool.getShares(lp1), lp1SharesBefore);
+        assertEq(pool.getShares(lp2), lp2SharesBefore);
+
+        // Share value increased for both
+        uint256 shareValueAfter = pool.shareValue();
+        assertGt(shareValueAfter, shareValueBefore);
+
+        // Both LPs can withdraw more than they put in
+        uint256 lp1Value = pool.calculateWithdrawalAmount(lp1SharesBefore);
+        uint256 lp2Value = pool.calculateWithdrawalAmount(lp2SharesBefore);
+        assertGt(lp1Value, 5 ether);
+        assertGt(lp2Value, 5 ether);
+    }
+
+    function test_GetWithdrawalStatus_Unfulfilled() public view {
+        bytes32 fakeHash = keccak256("fake");
+        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(fakeHash);
+
+        assertFalse(fulfilled);
+        assertFalse(settled);
+        assertEq(amount, 0);
+        assertEq(lockedFeeRate, 0);
+    }
+
+    function test_GetWithdrawalStatus_FulfilledNotSettled() public {
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        pool.setFeeRate(500);
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(withdrawalHash);
+
+        assertTrue(fulfilled);
+        assertFalse(settled);
+        assertEq(amount, 1 ether);
+        assertEq(lockedFeeRate, 500);
+    }
+
+    function test_GetWithdrawalStatus_FulfilledAndSettled() public {
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        pool.setFeeRate(500);
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Settle
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal);
+
+        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(withdrawalHash);
+
+        assertTrue(fulfilled);
+        assertTrue(settled);
+        assertEq(amount, 1 ether);
+        assertEq(lockedFeeRate, 500);
+    }
+
+    function test_Settlement_AccountingInvariant() public {
+        // Setup
+        pool.setFeeRate(500);
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        // Fulfill withdrawal
+        address user = address(0x999);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 2 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Verify invariant before settlement
+        assertGe(pool.totalLiquidity(), pool.availableLiquidity());
+        // Locked = amountToUser = 2 * 0.95 = 1.9 ETH (fee stays available)
+        assertEq(pool.totalLiquidity() - pool.availableLiquidity(), 1.9 ether); // Locked
+
+        // Settle
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 2 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal);
+
+        // Verify invariant after settlement - available equals total (nothing locked)
+        assertGe(pool.totalLiquidity(), pool.availableLiquidity());
+        assertEq(pool.totalLiquidity(), pool.availableLiquidity()); // Should be equal now
+
+        // Verify contract balance >= totalLiquidity
+        assertGe(address(pool).balance, pool.totalLiquidity());
+    }
+
+    function test_Settlement_FeesCompound() public {
+        // Setup with fee rate
+        pool.setFeeRate(500); // 5%
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        // First withdrawal and settlement
+        address user1 = address(0x1001);
+        Types.WithdrawalTransaction memory withdrawal1 = createWithdrawal(1, user1, 1 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal1);
+
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal1);
+
+        // Fee from first: 0.05 ETH
+        // Available liquidity: 10.05 ETH (9.05 + 1 from portal)
+        // Total liquidity: 10.05 ETH (fee credited)
+
+        // Second withdrawal - can use fees for liquidity
+        address user2 = address(0x1002);
+        Types.WithdrawalTransaction memory withdrawal2 = createWithdrawal(2, user2, 1 ether, "");
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal2);
+
+        // Should succeed because fees are available
+        // After second fulfillment: 10.05 - 0.95 = 9.1 ETH
+        assertEq(pool.availableLiquidity(), 9.1 ether);
+
+        // Settle second
+        vm.prank(address(optimismPortal));
+        (success,) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        pool.settleWithdrawal(withdrawal2);
+
+        // Total fees: 0.05 + 0.05 = 0.1 ETH
+        assertEq(pool.totalLiquidity(), 10.1 ether);
+        assertEq(pool.availableLiquidity(), 10.1 ether);
     }
 }

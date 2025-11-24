@@ -40,6 +40,7 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
     error AlreadyFulfilled();
     error AlreadySettled();
     error InvalidFeeRate();
+    error NotFulfilled();
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -83,6 +84,20 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
      * @param newRate The new fee rate
      */
     event FeeRateUpdated(uint256 oldRate, uint256 newRate);
+
+    /**
+     * @notice Emitted when a withdrawal is settled and fees are distributed
+     * @param withdrawalHash The hash of the withdrawal transaction
+     * @param reimbursement The amount returned to available liquidity (excluding fee)
+     * @param fee The fee amount credited to the pool (increases share value)
+     */
+    event WithdrawalSettled(bytes32 indexed withdrawalHash, uint256 reimbursement, uint256 fee);
+
+    /**
+     * @notice Emitted when attempting to finalize a withdrawal that was already finalized
+     * @param withdrawalHash The hash of the withdrawal transaction
+     */
+    event WithdrawalAlreadyFinalized(bytes32 indexed withdrawalHash);
 
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
@@ -244,10 +259,10 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         uint256 amountToUser = withdrawal.value - fee;
 
         // Update state before external call (checks-effects-interactions)
-        // Lock the FULL withdrawal amount (we'll get this back from OptimismPortal)
-        availableLiquidity -= withdrawal.value;
+        // Lock only what we're sending out (more capital efficient - fees stay available)
+        availableLiquidity -= amountToUser;
 
-        // Store withdrawal request with full amount
+        // Store withdrawal request with full amount (needed for settlement)
         withdrawalRequests[withdrawalHash] =
             WithdrawalRequest({amount: withdrawal.value, feeRate: lockedFeeRate, fulfilled: true, settled: false});
 
@@ -340,6 +355,23 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         return liquidityShares[provider];
     }
 
+    /**
+     * @notice Returns the status of a withdrawal request
+     * @param withdrawalHash The hash of the withdrawal transaction
+     * @return fulfilled Whether the withdrawal has been fulfilled by an LP
+     * @return settled Whether the withdrawal has been settled (ETH received from portal)
+     * @return amount The amount of ETH locked for this withdrawal
+     * @return lockedFeeRate The fee rate locked at time of fulfillment
+     */
+    function getWithdrawalStatus(bytes32 withdrawalHash)
+        external
+        view
+        returns (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate)
+    {
+        WithdrawalRequest memory request = withdrawalRequests[withdrawalHash];
+        return (request.fulfilled, request.settled, request.amount, request.feeRate);
+    }
+
     /*//////////////////////////////////////////////////////////////
                           FEE MANAGEMENT
     //////////////////////////////////////////////////////////////*/
@@ -365,6 +397,51 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /**
+     * @notice Settles a fulfilled withdrawal after OptimismPortal finalization
+     * @param withdrawal The full withdrawal transaction that was fulfilled
+     * @dev This function can be called by anyone after the 7-day challenge period.
+     *      It will either:
+     *      1. Call finalizeWithdrawalTransaction on the portal (if not yet finalized)
+     *      2. Simply update accounting (if already finalized by someone else)
+     *
+     *      The fee is calculated using the LOCKED fee rate from fulfillment time.
+     *      Fees are automatically credited to the pool and become available for providing
+     *      liquidity (compounding effect), while also increasing share value for all LPs.
+     */
+    function settleWithdrawal(Types.WithdrawalTransaction calldata withdrawal) external nonReentrant {
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+        WithdrawalRequest storage request = withdrawalRequests[withdrawalHash];
+
+        // Validations
+        if (!request.fulfilled) revert NotFulfilled();
+        if (request.settled) revert AlreadySettled();
+
+        // Try to finalize through portal (will revert if already finalized)
+        try OPTIMISM_PORTAL.finalizeWithdrawalTransaction(withdrawal) {
+        // Success - portal just sent us ETH
+        }
+        catch {
+            // Already finalized by someone else - just update our accounting
+            emit WithdrawalAlreadyFinalized(withdrawalHash);
+        }
+
+        // Calculate fee using LOCKED fee rate from fulfillment time
+        uint256 fee = (request.amount * request.feeRate) / 10000;
+        uint256 reimbursement = request.amount - fee;
+
+        // Update accounting:
+        // Portal sends back the full request.amount (1 ETH in example)
+        // We locked only the amountToUser (0.95 ETH), fee stayed available
+        // Now we add the full amount back to available (unlock + fee)
+        // And credit the fee to total to increase share value
+        availableLiquidity += request.amount; // Add full amount from portal
+        totalLiquidity += fee; // Credit fee to increase share value
+        request.settled = true;
+
+        emit WithdrawalSettled(withdrawalHash, reimbursement, fee);
+    }
+
+    /**
      * @notice Receives ETH from any source
      * @dev Primary use: OptimismPortal2 sends ETH after withdrawal finalization (7-day challenge period)
      *      Secondary use: Anyone can send ETH for reimbursement or emergency situations
@@ -372,14 +449,11 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
      *      WARNING: If you send ETH to this contract and you're NOT the OptimismPortal,
      *      your funds become a donation to the LP pool and CANNOT be recovered.
      *
-     *      In Stage 3, portal deposits will:
-     *      - Match incoming ETH to withdrawal hash
-     *      - Calculate and credit fees to pool
-     *      - Unlock liquidity
-     *      - Mark withdrawal as settled
+     *      Settlement is handled by the settleWithdrawal() function, which matches
+     *      incoming ETH to specific withdrawal hashes and distributes fees.
      */
     receive() external payable {
-        // Accept ETH from anyone (portal deposits will be handled in Stage 3)
-        // Non-portal deposits are effectively donations to the pool
+        // Accept ETH from anyone
+        // Settlement is handled by explicit settleWithdrawal() calls
     }
 }
