@@ -13,4 +13,15 @@ remappings = [
     "src/=lib/optimism/packages/contracts-bedrock/src/",
 ]
 
+# Fuzzing configuration
+[fuzz]
+runs = 100000
+max_test_rejects = 1000000
+
+# Invariant testing configuration
+[invariant]
+runs = 256
+depth = 100
+fail_on_revert = false
+
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
