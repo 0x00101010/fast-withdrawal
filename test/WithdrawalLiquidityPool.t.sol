@@ -2,22 +2,32 @@
 pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {WithdrawalLiquidityPool} from "../contracts/WithdrawalLiquidityPool.sol";
+import {
+    WithdrawalLiquidityPool
+} from "../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 
 // Mock OptimismPortal contract for testing
 contract MockOptimismPortal {
     bool public shouldRevert;
+    mapping(bytes32 => bool) public finalizedWithdrawals;
 
     function setShouldRevert(bool _shouldRevert) external {
         shouldRevert = _shouldRevert;
     }
 
-    function finalizeWithdrawalTransaction(Types.WithdrawalTransaction calldata) external payable {
+    function finalizeWithdrawalTransaction(
+        Types.WithdrawalTransaction calldata withdrawal
+    ) external payable {
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
         if (shouldRevert) {
-            revert("Already finalized");
+            revert("Whatever reason it is to revert.");
         }
+
+        // Mark as finalized
+        finalizedWithdrawals[withdrawalHash] = true;
     }
 }
 
@@ -36,9 +46,25 @@ contract WithdrawalLiquidityPoolTest is Test {
 
     uint256 constant INITIAL_BALANCE = 100 ether;
 
-    event LiquidityDeposited(address indexed provider, uint256 amount, uint256 shares);
-    event LiquidityWithdrawn(address indexed provider, uint256 shares, uint256 amount);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event LiquidityDeposited(
+        address indexed provider,
+        uint256 amount,
+        uint256 shares
+    );
+    event LiquidityWithdrawn(
+        address indexed provider,
+        uint256 shares,
+        uint256 amount
+    );
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+    event FallbackWithdrawalClaimed(
+        bytes32 indexed withdrawalHash,
+        address indexed user,
+        uint256 amount
+    );
 
     function setUp() public {
         optimismPortal = new MockOptimismPortal();
@@ -109,7 +135,9 @@ contract WithdrawalLiquidityPoolTest is Test {
                     SUBSEQUENT DEPOSIT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_DepositLiquidity_SubsequentDeposit_MintsProportionalShares() public {
+    function test_DepositLiquidity_SubsequentDeposit_MintsProportionalShares()
+        public
+    {
         // LP1 deposits 10 ETH (gets 10 shares)
         vm.prank(lp1);
         pool.depositLiquidity{value: 10 ether}();
@@ -203,7 +231,9 @@ contract WithdrawalLiquidityPoolTest is Test {
         assertEq(lp1.balance, balanceBefore + 3 ether);
     }
 
-    function test_WithdrawLiquidity_MultipleLPs_IndependentWithdrawals() public {
+    function test_WithdrawLiquidity_MultipleLPs_IndependentWithdrawals()
+        public
+    {
         // LP1 deposits 10 ETH
         vm.prank(lp1);
         pool.depositLiquidity{value: 10 ether}();
@@ -325,7 +355,10 @@ contract WithdrawalLiquidityPoolTest is Test {
         assertEq(pool.calculateWithdrawalAmount(10 ether), 10 ether);
     }
 
-    function test_CalculateWithdrawalAmount_ReturnsZeroWhenNoShares() public view {
+    function test_CalculateWithdrawalAmount_ReturnsZeroWhenNoShares()
+        public
+        view
+    {
         assertEq(pool.calculateWithdrawalAmount(5 ether), 0);
     }
 
@@ -341,7 +374,9 @@ contract WithdrawalLiquidityPoolTest is Test {
                       ACCOUNTING INVARIANTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Invariant_TotalLiquidityEqualsAvailableLiquidity_Stage1() public {
+    function test_Invariant_TotalLiquidityEqualsAvailableLiquidity_Stage1()
+        public
+    {
         // In Stage 1 (no locked liquidity yet), these should always be equal
 
         vm.prank(lp1);
@@ -418,23 +453,30 @@ contract WithdrawalLiquidityPoolTest is Test {
                     STAGE 2: INSTANT WITHDRAWAL TESTS
     //////////////////////////////////////////////////////////////*/
 
-    event WithdrawalFulfilled(bytes32 indexed withdrawalHash, address indexed user, uint256 amount, uint256 feeRate);
+    event WithdrawalFulfilled(
+        bytes32 indexed withdrawalHash,
+        address indexed user,
+        uint256 amount,
+        uint256 feeRate
+    );
     event FeeRateUpdated(uint256 oldRate, uint256 newRate);
 
     // Helper function to create a test withdrawal transaction
-    function createWithdrawal(uint256 nonce, address sender, uint256 value, bytes memory data)
-        internal
-        view
-        returns (Types.WithdrawalTransaction memory)
-    {
-        return Types.WithdrawalTransaction({
-            nonce: nonce,
-            sender: sender,
-            target: address(pool), // Pool receives after 7 days
-            value: value,
-            gasLimit: 100000,
-            data: data
-        });
+    function createWithdrawal(
+        uint256 nonce,
+        address sender,
+        uint256 value,
+        bytes memory data
+    ) internal view returns (Types.WithdrawalTransaction memory) {
+        return
+            Types.WithdrawalTransaction({
+                nonce: nonce,
+                sender: sender,
+                target: address(pool), // Pool receives after 7 days
+                value: value,
+                gasLimit: 100000,
+                data: data
+            });
     }
 
     function test_ProvideLiquidity_Success() public {
@@ -444,7 +486,12 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Create withdrawal transaction (no custom recipient)
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         bytes32 expectedHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -457,11 +504,18 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.provideLiquidity(withdrawal);
 
         // Verify withdrawal was fulfilled
-        (uint256 amount, uint256 feeRate, bool fulfilled, bool settled) = pool.withdrawalRequests(expectedHash);
+        (
+            uint256 amount,
+            uint256 feeRate,
+            bool fulfilled,
+            bool settled,
+            bool claimed
+        ) = pool.withdrawalRequests(expectedHash);
         assertEq(amount, 1 ether);
         assertEq(feeRate, 0);
         assertTrue(fulfilled);
         assertFalse(settled);
+        assertFalse(claimed);
 
         // Verify accounting
         assertEq(pool.availableLiquidity(), 9 ether); // 10 - 1 locked
@@ -478,7 +532,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         address sender = address(0x888);
         address customRecipient = address(0x999);
         bytes memory data = abi.encode(customRecipient);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, sender, 1 ether, data);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            sender,
+            1 ether,
+            data
+        );
 
         bytes32 expectedHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -491,11 +550,18 @@ contract WithdrawalLiquidityPoolTest is Test {
         assertEq(sender.balance, 0);
 
         // Verify internal state is updated correctly
-        (uint256 amount, uint256 feeRate, bool fulfilled, bool settled) = pool.withdrawalRequests(expectedHash);
+        (
+            uint256 amount,
+            uint256 feeRate,
+            bool fulfilled,
+            bool settled,
+            bool claimed
+        ) = pool.withdrawalRequests(expectedHash);
         assertEq(amount, 1 ether);
         assertEq(feeRate, 0);
         assertTrue(fulfilled);
         assertFalse(settled);
+        assertFalse(claimed);
     }
 
     function test_ProvideLiquidity_WithFee() public {
@@ -508,7 +574,12 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Create withdrawal
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         bytes32 expectedHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -533,7 +604,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         vm.prank(lp1);
         pool.depositLiquidity{value: 10 ether}();
 
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, address(0x999), 0, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0x999),
+            0,
+            ""
+        );
 
         vm.expectRevert(WithdrawalLiquidityPool.ZeroAmount.selector);
         vm.prank(lp1);
@@ -545,7 +621,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.depositLiquidity{value: 10 ether}();
 
         // Withdrawal with sender = address(0)
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, address(0), 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0),
+            1 ether,
+            ""
+        );
 
         vm.expectRevert(WithdrawalLiquidityPool.ZeroAddress.selector);
         vm.prank(lp1);
@@ -556,7 +637,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         vm.prank(lp1);
         pool.depositLiquidity{value: 10 ether}();
 
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, address(0x999), 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0x999),
+            1 ether,
+            ""
+        );
 
         // First fulfillment succeeds
         vm.prank(lp1);
@@ -572,7 +658,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         vm.prank(lp1);
         pool.depositLiquidity{value: 1 ether}();
 
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, address(0x999), 2 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0x999),
+            2 ether,
+            ""
+        );
 
         vm.expectRevert(WithdrawalLiquidityPool.InsufficientLiquidity.selector);
         vm.prank(lp1);
@@ -589,7 +680,12 @@ contract WithdrawalLiquidityPoolTest is Test {
             // casting to 'uint160' is safe because i is small (1-3) and 1000 + i fits in uint160
             // forge-lint: disable-next-line(unsafe-typecast)
             address user = address(uint160(1000 + i));
-            Types.WithdrawalTransaction memory withdrawal = createWithdrawal(i, user, 1 ether, "");
+            Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+                i,
+                user,
+                1 ether,
+                ""
+            );
 
             vm.prank(lp1);
             pool.provideLiquidity(withdrawal);
@@ -609,7 +705,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.setFeeRate(500);
 
         // Create and fulfill withdrawal
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, address(0x999), 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0x999),
+            1 ether,
+            ""
+        );
         bytes32 hash = Hashing.hashWithdrawal(withdrawal);
 
         vm.prank(lp1);
@@ -619,7 +720,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.setFeeRate(1000);
 
         // Verify locked fee rate is still 5%
-        (, uint256 lockedFeeRate,,) = pool.withdrawalRequests(hash);
+        (, uint256 lockedFeeRate, , , ) = pool.withdrawalRequests(hash);
         assertEq(lockedFeeRate, 500);
     }
 
@@ -667,7 +768,7 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Portal sends ETH
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         assertTrue(success);
 
         assertEq(address(pool).balance, 1 ether);
@@ -676,7 +777,7 @@ contract WithdrawalLiquidityPoolTest is Test {
     function test_Receive_AcceptsFromNonPortal_AsDonation() public {
         // Non-portal address can send ETH - it becomes a donation to the pool
         vm.prank(lp1);
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
 
         // Call should succeed
         assertTrue(success);
@@ -701,7 +802,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         uint256 initialAvailable = pool.availableLiquidity();
 
         // Fulfill withdrawal
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, address(0x999), 3 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0x999),
+            3 ether,
+            ""
+        );
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
 
@@ -721,7 +827,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         for (uint256 i = 1; i <= 5; i++) {
             // casting to 'uint160' is safe because i is small (1-5) and 1000 + i fits in uint160
             // forge-lint: disable-next-line(unsafe-typecast)
-            Types.WithdrawalTransaction memory withdrawal = createWithdrawal(i, address(uint160(1000 + i)), 1 ether, "");
+            Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+                i,
+                address(uint160(1000 + i)),
+                1 ether,
+                ""
+            );
             vm.prank(lp1);
             pool.provideLiquidity(withdrawal);
         }
@@ -734,7 +845,11 @@ contract WithdrawalLiquidityPoolTest is Test {
                     STAGE 3: SETTLEMENT TESTS
     //////////////////////////////////////////////////////////////*/
 
-    event WithdrawalSettled(bytes32 indexed withdrawalHash, uint256 reimbursement, uint256 fee);
+    event WithdrawalSettled(
+        bytes32 indexed withdrawalHash,
+        uint256 reimbursement,
+        uint256 fee
+    );
     event WithdrawalAlreadyFinalized(bytes32 indexed withdrawalHash);
 
     function test_SettleWithdrawal_Success() public {
@@ -745,7 +860,12 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Fulfill withdrawal
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
         vm.prank(lp1);
@@ -760,7 +880,7 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Mock the portal finalizing the withdrawal (portal sends ETH back)
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         // Settle withdrawal
@@ -768,14 +888,25 @@ contract WithdrawalLiquidityPoolTest is Test {
         uint256 expectedReimbursement = 0.95 ether;
 
         vm.expectEmit(true, false, false, true);
-        emit WithdrawalSettled(withdrawalHash, expectedReimbursement, expectedFee);
+        emit WithdrawalSettled(
+            withdrawalHash,
+            expectedReimbursement,
+            expectedFee
+        );
 
         pool.settleWithdrawal(withdrawal);
 
         // Verify state after settlement
-        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(withdrawalHash);
+        (
+            bool fulfilled,
+            bool settled,
+            bool claimed,
+            uint256 amount,
+            uint256 lockedFeeRate
+        ) = pool.getWithdrawalStatus(withdrawalHash);
         assertTrue(fulfilled);
         assertTrue(settled);
+        assertFalse(claimed);
         assertEq(amount, 1 ether);
         assertEq(lockedFeeRate, 500);
 
@@ -795,7 +926,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.depositLiquidity{value: 10 ether}();
 
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
         vm.prank(lp1);
@@ -804,7 +940,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Someone else already finalized on the portal
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         // Make portal revert to simulate already finalized
@@ -818,14 +954,19 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.settleWithdrawal(withdrawal);
 
         // Verify settlement completed
-        (, bool settled,,) = pool.getWithdrawalStatus(withdrawalHash);
+        (, bool settled, , , ) = pool.getWithdrawalStatus(withdrawalHash);
         assertTrue(settled);
     }
 
     function test_SettleWithdrawal_RevertsIfNotFulfilled() public {
         // Create withdrawal but don't fulfill it
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         vm.expectRevert(WithdrawalLiquidityPool.NotFulfilled.selector);
         pool.settleWithdrawal(withdrawal);
@@ -838,7 +979,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.depositLiquidity{value: 10 ether}();
 
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
@@ -846,7 +992,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Fund and settle
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal);
@@ -862,7 +1008,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.depositLiquidity{value: 10 ether}();
 
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
@@ -870,7 +1021,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Fund and settle
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal);
@@ -887,7 +1038,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.depositLiquidity{value: 10 ether}();
 
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
@@ -895,7 +1051,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Fund and settle
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal);
@@ -912,7 +1068,8 @@ contract WithdrawalLiquidityPoolTest is Test {
         pool.depositLiquidity{value: 10 ether}();
 
         // Fulfill 3 withdrawals
-        Types.WithdrawalTransaction[] memory withdrawals = new Types.WithdrawalTransaction[](3);
+        Types.WithdrawalTransaction[]
+            memory withdrawals = new Types.WithdrawalTransaction[](3);
         for (uint256 i = 0; i < 3; i++) {
             // casting to 'uint160' is safe because i is small and 1000 + i fits in uint160
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -929,7 +1086,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Fund portal
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 3 ether}("");
+        (bool success, ) = address(pool).call{value: 3 ether}("");
         require(success);
 
         // Settle all 3
@@ -953,7 +1110,12 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Set fee and fulfill withdrawal
         pool.setFeeRate(500); // 5%
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
@@ -966,7 +1128,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Settle withdrawal
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal);
@@ -988,10 +1150,17 @@ contract WithdrawalLiquidityPoolTest is Test {
 
     function test_GetWithdrawalStatus_Unfulfilled() public view {
         bytes32 fakeHash = keccak256("fake");
-        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(fakeHash);
+        (
+            bool fulfilled,
+            bool settled,
+            bool claimed,
+            uint256 amount,
+            uint256 lockedFeeRate
+        ) = pool.getWithdrawalStatus(fakeHash);
 
         assertFalse(fulfilled);
         assertFalse(settled);
+        assertFalse(claimed);
         assertEq(amount, 0);
         assertEq(lockedFeeRate, 0);
     }
@@ -1002,16 +1171,28 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         pool.setFeeRate(500);
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
 
-        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(withdrawalHash);
+        (
+            bool fulfilled,
+            bool settled,
+            bool claimed,
+            uint256 amount,
+            uint256 lockedFeeRate
+        ) = pool.getWithdrawalStatus(withdrawalHash);
 
         assertTrue(fulfilled);
         assertFalse(settled);
+        assertFalse(claimed);
         assertEq(amount, 1 ether);
         assertEq(lockedFeeRate, 500);
     }
@@ -1022,7 +1203,12 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         pool.setFeeRate(500);
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
         vm.prank(lp1);
@@ -1031,15 +1217,22 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Settle
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal);
 
-        (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate) = pool.getWithdrawalStatus(withdrawalHash);
+        (
+            bool fulfilled,
+            bool settled,
+            bool claimed,
+            uint256 amount,
+            uint256 lockedFeeRate
+        ) = pool.getWithdrawalStatus(withdrawalHash);
 
         assertTrue(fulfilled);
         assertTrue(settled);
+        assertFalse(claimed);
         assertEq(amount, 1 ether);
         assertEq(lockedFeeRate, 500);
     }
@@ -1052,7 +1245,12 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Fulfill withdrawal
         address user = address(0x999);
-        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(1, user, 2 ether, "");
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            2 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal);
@@ -1065,7 +1263,7 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Settle
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 2 ether}("");
+        (bool success, ) = address(pool).call{value: 2 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal);
@@ -1086,14 +1284,19 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // First withdrawal and settlement
         address user1 = address(0x1001);
-        Types.WithdrawalTransaction memory withdrawal1 = createWithdrawal(1, user1, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal1 = createWithdrawal(
+            1,
+            user1,
+            1 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal1);
 
         vm.deal(address(optimismPortal), 10 ether);
         vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
+        (bool success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal1);
@@ -1104,7 +1307,12 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Second withdrawal - can use fees for liquidity
         address user2 = address(0x1002);
-        Types.WithdrawalTransaction memory withdrawal2 = createWithdrawal(2, user2, 1 ether, "");
+        Types.WithdrawalTransaction memory withdrawal2 = createWithdrawal(
+            2,
+            user2,
+            1 ether,
+            ""
+        );
 
         vm.prank(lp1);
         pool.provideLiquidity(withdrawal2);
@@ -1115,7 +1323,7 @@ contract WithdrawalLiquidityPoolTest is Test {
 
         // Settle second
         vm.prank(address(optimismPortal));
-        (success,) = address(pool).call{value: 1 ether}("");
+        (success, ) = address(pool).call{value: 1 ether}("");
         require(success);
 
         pool.settleWithdrawal(withdrawal2);
@@ -1123,5 +1331,281 @@ contract WithdrawalLiquidityPoolTest is Test {
         // Total fees: 0.05 + 0.05 = 0.1 ETH
         assertEq(pool.totalLiquidity(), 10.1 ether);
         assertEq(pool.availableLiquidity(), 10.1 ether);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        STAGE 4: FALLBACK WITHDRAWAL TESTS
+    //////////////////////////////////////////////////////////////*/
+
+    function test_FallbackWithdrawal_Success() public {
+        // User initiates withdrawal but no LP fulfills it
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+
+        // Simulate portal finalization after 7 days (send ETH to pool)
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // User claims fallback withdrawal
+        pool.claimFallbackWithdrawal(withdrawal);
+
+        // Verify user received full amount (no fee)
+        assertEq(user.balance, 1 ether);
+
+        // Verify withdrawal marked as claimed
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+        (bool fulfilled, bool settled, bool claimed, uint256 amount, ) = pool
+            .getWithdrawalStatus(withdrawalHash);
+        assertFalse(fulfilled);
+        assertFalse(settled);
+        assertTrue(claimed);
+        assertEq(amount, 1 ether);
+    }
+
+    function test_FallbackWithdrawal_WithCustomRecipient() public {
+        // User specifies custom recipient in data
+        address customRecipient = address(0x5678);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0x1234),
+            1 ether,
+            abi.encode(customRecipient)
+        );
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // User claims fallback
+        pool.claimFallbackWithdrawal(withdrawal);
+
+        // Verify custom recipient received funds
+        assertEq(customRecipient.balance, 1 ether);
+    }
+
+    function test_FallbackWithdrawal_RevertsIfFulfilledByLP() public {
+        // LP deposits liquidity
+        vm.deal(lp1, 10 ether);
+        vm.prank(lp1);
+        pool.depositLiquidity{value: 10 ether}();
+
+        // LP fulfills withdrawal
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+
+        vm.prank(lp1);
+        pool.provideLiquidity(withdrawal);
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // User tries to claim fallback - should revert
+        vm.expectRevert(
+            WithdrawalLiquidityPool.WithdrawalFulfilledByLP.selector
+        );
+        pool.claimFallbackWithdrawal(withdrawal);
+    }
+
+    function test_FallbackWithdrawal_RevertsIfAlreadyClaimed() public {
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // First claim succeeds
+        pool.claimFallbackWithdrawal(withdrawal);
+
+        // Simulate portal sending ETH again (shouldn't happen but testing)
+        vm.prank(address(optimismPortal));
+        (success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // Second claim should revert
+        vm.expectRevert(WithdrawalLiquidityPool.AlreadyClaimed.selector);
+        pool.claimFallbackWithdrawal(withdrawal);
+    }
+
+    function test_FallbackWithdrawal_RevertsOnZeroAmount() public {
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            0,
+            ""
+        );
+
+        vm.expectRevert(WithdrawalLiquidityPool.ZeroAmount.selector);
+        pool.claimFallbackWithdrawal(withdrawal);
+    }
+
+    function test_FallbackWithdrawal_RevertsOnZeroRecipient() public {
+        // Create withdrawal with zero address recipient and no data (fallback to sender)
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            address(0),
+            1 ether,
+            ""
+        );
+
+        vm.expectRevert(WithdrawalLiquidityPool.ZeroAddress.selector);
+        pool.claimFallbackWithdrawal(withdrawal);
+    }
+
+    function test_FallbackWithdrawal_RevertsIfNotYetFinalized() public {
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+
+        // Don't finalize through portal and don't fund the portal
+        // User tries to claim without finalization - should revert
+        // The call to finalizeWithdrawalTransaction will fail because proof period hasn't passed
+        vm.expectRevert();
+        pool.claimFallbackWithdrawal(withdrawal);
+    }
+
+    function test_FallbackWithdrawal_HandlesAlreadyFinalized() public {
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // Finalize through portal (simulate someone else finalizing)
+        optimismPortal.finalizeWithdrawalTransaction(withdrawal);
+
+        // User claims fallback - should succeed via try/catch
+        pool.claimFallbackWithdrawal(withdrawal);
+
+        // Verify user received funds
+        assertEq(user.balance, 1 ether);
+    }
+
+    function test_FallbackWithdrawal_NoFeeCharged() public {
+        // Set fee rate to 10%
+        pool.setFeeRate(1000);
+
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // User claims fallback
+        pool.claimFallbackWithdrawal(withdrawal);
+
+        // Verify user received FULL amount despite 10% fee rate
+        assertEq(user.balance, 1 ether);
+    }
+
+    function test_FallbackWithdrawal_EmitsEvent() public {
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // Expect event
+        vm.expectEmit(true, true, false, true);
+        emit FallbackWithdrawalClaimed(withdrawalHash, user, 1 ether);
+
+        pool.claimFallbackWithdrawal(withdrawal);
+    }
+
+    function test_GetWithdrawalStatus_FallbackClaimed() public {
+        address user = address(0x1234);
+        Types.WithdrawalTransaction memory withdrawal = createWithdrawal(
+            1,
+            user,
+            1 ether,
+            ""
+        );
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+
+        // Simulate portal finalization
+        vm.deal(address(optimismPortal), 10 ether);
+        vm.prank(address(optimismPortal));
+        (bool success, ) = address(pool).call{value: 1 ether}("");
+        require(success);
+
+        // Before claim
+        (
+            bool fulfilled,
+            bool settled,
+            bool claimed,
+            uint256 amount,
+            uint256 feeRate
+        ) = pool.getWithdrawalStatus(withdrawalHash);
+        assertFalse(fulfilled);
+        assertFalse(settled);
+        assertFalse(claimed);
+        assertEq(amount, 0);
+        assertEq(feeRate, 0);
+
+        // Claim fallback
+        pool.claimFallbackWithdrawal(withdrawal);
+
+        // After claim
+        (fulfilled, settled, claimed, amount, feeRate) = pool
+            .getWithdrawalStatus(withdrawalHash);
+        assertFalse(fulfilled);
+        assertFalse(settled);
+        assertTrue(claimed);
+        assertEq(amount, 1 ether);
+        assertEq(feeRate, 0);
     }
 }

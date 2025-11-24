@@ -41,6 +41,9 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
     error AlreadySettled();
     error InvalidFeeRate();
     error NotFulfilled();
+    error AlreadyClaimed();
+    error WithdrawalFulfilledByLP();
+    error NotYetFinalized();
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -99,6 +102,14 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
      */
     event WithdrawalAlreadyFinalized(bytes32 indexed withdrawalHash);
 
+    /**
+     * @notice Emitted when a user claims a fallback withdrawal (no LP fulfilled)
+     * @param withdrawalHash The hash of the withdrawal transaction
+     * @param user The address receiving the fallback withdrawal
+     * @param amount The full amount sent to user (no fee charged)
+     */
+    event FallbackWithdrawalClaimed(bytes32 indexed withdrawalHash, address indexed user, uint256 amount);
+
     /*//////////////////////////////////////////////////////////////
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
@@ -123,10 +134,11 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
 
     /// @notice Struct to track withdrawal fulfillment and settlement
     struct WithdrawalRequest {
-        uint256 amount; // Amount of ETH provided to user
-        uint256 feeRate; // Fee rate locked at time of fulfillment (basis points)
-        bool fulfilled; // Whether this withdrawal has been fulfilled
+        uint256 amount; // Amount of ETH provided to user (or full withdrawal amount for fallback)
+        uint256 feeRate; // Fee rate locked at time of fulfillment (basis points, 0 for fallback)
+        bool fulfilled; // Whether this withdrawal has been fulfilled by an LP
         bool settled; // Whether OptimismPortal has sent ETH back
+        bool claimed; // Whether this withdrawal has been claimed as fallback (no LP fulfilled)
     }
 
     /// @notice Mapping of withdrawal hash to request details
@@ -263,8 +275,13 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         availableLiquidity -= amountToUser;
 
         // Store withdrawal request with full amount (needed for settlement)
-        withdrawalRequests[withdrawalHash] =
-            WithdrawalRequest({amount: withdrawal.value, feeRate: lockedFeeRate, fulfilled: true, settled: false});
+        withdrawalRequests[withdrawalHash] = WithdrawalRequest({
+            amount: withdrawal.value,
+            feeRate: lockedFeeRate,
+            fulfilled: true,
+            settled: false,
+            claimed: false
+        });
 
         // Transfer ETH to recipient (after deducting fee)
         (bool success,) = recipient.call{value: amountToUser}("");
@@ -360,16 +377,17 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
      * @param withdrawalHash The hash of the withdrawal transaction
      * @return fulfilled Whether the withdrawal has been fulfilled by an LP
      * @return settled Whether the withdrawal has been settled (ETH received from portal)
-     * @return amount The amount of ETH locked for this withdrawal
-     * @return lockedFeeRate The fee rate locked at time of fulfillment
+     * @return claimed Whether the withdrawal has been claimed as fallback (no LP fulfilled)
+     * @return amount The amount of ETH locked for this withdrawal (or full amount for fallback)
+     * @return lockedFeeRate The fee rate locked at time of fulfillment (0 for fallback)
      */
     function getWithdrawalStatus(bytes32 withdrawalHash)
         external
         view
-        returns (bool fulfilled, bool settled, uint256 amount, uint256 lockedFeeRate)
+        returns (bool fulfilled, bool settled, bool claimed, uint256 amount, uint256 lockedFeeRate)
     {
         WithdrawalRequest memory request = withdrawalRequests[withdrawalHash];
-        return (request.fulfilled, request.settled, request.amount, request.feeRate);
+        return (request.fulfilled, request.settled, request.claimed, request.amount, request.feeRate);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -439,6 +457,62 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         request.settled = true;
 
         emit WithdrawalSettled(withdrawalHash, reimbursement, fee);
+    }
+
+    /**
+     * @notice Allows users to claim a fallback withdrawal when no LP fulfilled their request
+     * @param withdrawal The full withdrawal transaction from L2
+     * @dev This function should be called AFTER the 7-day challenge period when:
+     *      1. No LP provided instant liquidity (withdrawal not fulfilled)
+     *      2. The withdrawal has been finalized through the OptimismPortal
+     *      3. ETH has been received from the portal
+     *
+     *      The user receives the full withdrawal amount with NO fee charged.
+     *      This ensures the system degrades gracefully when LPs don't participate.
+     *
+     *      Flow:
+     *      1. User initiates withdrawal on L2
+     *      2. No LP calls provideLiquidity() for 7 days
+     *      3. After 7 days, someone calls finalizeWithdrawalTransaction() on portal
+     *      4. Portal sends ETH to this contract
+     *      5. User calls claimFallbackWithdrawal() to receive their funds
+     */
+    function claimFallbackWithdrawal(Types.WithdrawalTransaction calldata withdrawal) external nonReentrant {
+        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
+        WithdrawalRequest storage request = withdrawalRequests[withdrawalHash];
+
+        // Decode recipient from data, fallback to sender if empty
+        address recipient;
+        if (withdrawal.data.length >= 32) {
+            recipient = abi.decode(withdrawal.data, (address));
+        } else {
+            recipient = withdrawal.sender;
+        }
+
+        // Validations
+        if (withdrawal.value == 0) revert ZeroAmount();
+        if (recipient == address(0)) revert ZeroAddress();
+        if (request.fulfilled) revert WithdrawalFulfilledByLP();
+        if (request.claimed) revert AlreadyClaimed();
+
+        // Check if withdrawal is already finalized on portal
+        if (!OPTIMISM_PORTAL.finalizedWithdrawals(withdrawalHash)) {
+            // Not finalized yet - try to finalize it ourselves
+            // If this fails, it means the withdrawal is not ready (proof period not passed, etc.)
+            OPTIMISM_PORTAL.finalizeWithdrawalTransaction(withdrawal);
+            // If we reach here, finalization succeeded and portal sent us ETH
+        }
+        // If already finalized, the ETH should already be in the contract
+
+        // Mark as claimed and store the amount
+        request.claimed = true;
+        request.amount = withdrawal.value;
+
+        // Transfer full amount to user (no fee charged on fallback)
+        (bool success,) = recipient.call{value: withdrawal.value}("");
+        require(success, "ETH transfer failed");
+
+        emit FallbackWithdrawalClaimed(withdrawalHash, recipient, withdrawal.value);
     }
 
     /**
