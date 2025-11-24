@@ -2,34 +2,10 @@
 pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {
-    WithdrawalLiquidityPool
-} from "../contracts/WithdrawalLiquidityPool.sol";
+import {WithdrawalLiquidityPool} from "../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
-
-// Mock OptimismPortal contract for testing
-contract MockOptimismPortal {
-    bool public shouldRevert;
-    mapping(bytes32 => bool) public finalizedWithdrawals;
-
-    function setShouldRevert(bool _shouldRevert) external {
-        shouldRevert = _shouldRevert;
-    }
-
-    function finalizeWithdrawalTransaction(
-        Types.WithdrawalTransaction calldata withdrawal
-    ) external payable {
-        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
-
-        if (shouldRevert) {
-            revert("Whatever reason it is to revert.");
-        }
-
-        // Mark as finalized
-        finalizedWithdrawals[withdrawalHash] = true;
-    }
-}
+import {MockOptimismPortal} from "./mocks/MockOptimismPortal.sol";
 
 /**
  * @title WithdrawalLiquidityPoolTest
@@ -1379,13 +1355,10 @@ contract WithdrawalLiquidityPoolTest is Test {
             abi.encode(customRecipient)
         );
 
-        // Simulate portal finalization
+        // Fund portal for finalization
         vm.deal(address(optimismPortal), 10 ether);
-        vm.prank(address(optimismPortal));
-        (bool success, ) = address(pool).call{value: 1 ether}("");
-        require(success);
 
-        // User claims fallback
+        // User claims fallback (portal will finalize and send ETH automatically)
         pool.claimFallbackWithdrawal(withdrawal);
 
         // Verify custom recipient received funds

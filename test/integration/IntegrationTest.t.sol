@@ -5,16 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
-
-// Mock OptimismPortal for integration testing
-contract MockOptimismPortal {
-    mapping(bytes32 => bool) public finalizedWithdrawals;
-
-    function finalizeWithdrawalTransaction(Types.WithdrawalTransaction calldata withdrawal) external payable {
-        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
-        finalizedWithdrawals[withdrawalHash] = true;
-    }
-}
+import {MockOptimismPortal} from "../mocks/MockOptimismPortal.sol";
 
 /**
  * @title IntegrationTest
@@ -88,16 +79,13 @@ contract IntegrationTest is Test {
         assertFalse(settled);
         assertFalse(claimed);
 
-        // Step 5: Wait 7 days and finalize through portal
+        // Step 5: Wait 7 days and settle withdrawal (portal will send ETH automatically)
         vm.warp(block.timestamp + 7 days);
 
-        // Fund portal
+        // Fund portal so it can send ETH to pool
         vm.deal(address(optimismPortal), 10 ether);
-        vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
-        require(success);
 
-        // Step 6: Settle withdrawal
+        // Step 6: Settle withdrawal (portal automatically sends ETH to pool)
         pool.settleWithdrawal(withdrawal);
 
         // Verify settlement
@@ -138,13 +126,10 @@ contract IntegrationTest is Test {
         // Step 2: No LP provides liquidity (7 days pass)
         vm.warp(block.timestamp + 7 days);
 
-        // Step 3: Portal finalizes and sends ETH
+        // Step 3: Fund portal so it can finalize
         vm.deal(address(optimismPortal), 10 ether);
-        vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
-        require(success);
 
-        // Step 4: User claims fallback withdrawal
+        // Step 4: User claims fallback withdrawal (portal will finalize and send ETH automatically)
         pool.claimFallbackWithdrawal(withdrawal);
 
         // Verify user received full amount (no fee)
@@ -206,16 +191,13 @@ contract IntegrationTest is Test {
         // Wait 7 days
         vm.warp(block.timestamp + 7 days);
 
-        // Portal finalizes both
+        // Fund portal for finalization
         vm.deal(address(optimismPortal), 10 ether);
-        vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 2 ether}("");
-        require(success);
 
-        // Settle withdrawal 1 (instant)
+        // Settle withdrawal 1 (instant) - portal sends ETH automatically
         pool.settleWithdrawal(withdrawal1);
 
-        // Claim withdrawal 2 (fallback)
+        // Claim withdrawal 2 (fallback) - portal sends ETH automatically
         pool.claimFallbackWithdrawal(withdrawal2);
 
         // Verify both users received funds
@@ -249,13 +231,10 @@ contract IntegrationTest is Test {
         // Verify liquidity locked correctly
         assertEq(pool.availableLiquidity(), 90.5 ether); // 100 - (10 * 0.95)
 
-        // Portal sends ETH for all withdrawals
+        // Fund portal for all settlements
         vm.deal(address(optimismPortal), 20 ether);
-        vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 10 ether}("");
-        require(success);
 
-        // Settle all withdrawals
+        // Settle all withdrawals (portal sends ETH automatically for each)
         for (uint256 i = 0; i < 10; i++) {
             pool.settleWithdrawal(withdrawals[i]);
         }
@@ -285,12 +264,8 @@ contract IntegrationTest is Test {
             vm.prank(lp1);
             pool.provideLiquidity(withdrawal);
 
-            // Fund and settle
+            // Fund portal and settle (portal sends ETH automatically)
             vm.deal(address(optimismPortal), 10 ether);
-            vm.prank(address(optimismPortal));
-            (bool success,) = address(pool).call{value: 1 ether}("");
-            require(success);
-
             pool.settleWithdrawal(withdrawal);
         }
 
@@ -334,15 +309,9 @@ contract IntegrationTest is Test {
 
         // External party finalizes through portal directly
         vm.deal(address(optimismPortal), 10 ether);
-        vm.prank(address(optimismPortal));
-        optimismPortal.finalizeWithdrawalTransaction{value: 1 ether}(withdrawal);
+        optimismPortal.finalizeWithdrawalTransaction(withdrawal);
 
-        // Portal sends ETH
-        vm.prank(address(optimismPortal));
-        (bool success,) = address(pool).call{value: 1 ether}("");
-        require(success);
-
-        // Settlement should still work (already finalized path)
+        // Settlement should still work (already finalized path, won't double-send ETH)
         pool.settleWithdrawal(withdrawal);
 
         // Verify settlement succeeded

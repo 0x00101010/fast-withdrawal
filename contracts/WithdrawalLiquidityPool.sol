@@ -530,4 +530,15 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         // Accept ETH from anyone
         // Settlement is handled by explicit settleWithdrawal() calls
     }
+
+    /**
+     * @notice Fallback function to accept ETH with calldata
+     * @dev The OptimismPortal calls the target with withdrawal.data
+     *      We accept and ignore the data - the actual recipient routing
+     *      happens in claimFallbackWithdrawal() or provideLiquidity()
+     */
+    fallback() external payable {
+        // Accept ETH with data from portal
+        // Data is ignored here - recipient routing handled elsewhere
+    }
 }

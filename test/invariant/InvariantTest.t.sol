@@ -6,6 +6,7 @@ import {console} from "forge-std/console.sol";
 import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
+import {MockOptimismPortal} from "../mocks/MockOptimismPortal.sol";
 
 /**
  * @title InvariantTest
@@ -294,13 +295,10 @@ contract Handler is Test {
         // Only settle if fulfilled
         if (!fulfilledWithdrawals[withdrawalHash]) return;
 
-        // Fund pool from portal
-        vm.deal(mockPortal, amount);
-        vm.prank(mockPortal);
-        (bool success,) = address(pool).call{value: amount}("");
-        if (!success) return;
+        // Fund portal so it can send ETH to pool
+        vm.deal(mockPortal, amount * 2);
 
-        // Settle
+        // Settle (portal will send ETH automatically)
         try pool.settleWithdrawal(withdrawal) {
             settleCount++;
 
@@ -337,13 +335,10 @@ contract Handler is Test {
         // Skip if already fulfilled
         if (fulfilledWithdrawals[withdrawalHash]) return;
 
-        // Fund pool from portal
-        vm.deal(mockPortal, amount);
-        vm.prank(mockPortal);
-        (bool success,) = address(pool).call{value: amount}("");
-        if (!success) return;
+        // Fund portal so it can send ETH to pool
+        vm.deal(mockPortal, amount * 2);
 
-        // Claim
+        // Claim (portal will send ETH automatically)
         try pool.claimFallbackWithdrawal(withdrawal) {
             claimCount++;
         } catch {
@@ -373,18 +368,5 @@ contract Handler is Test {
         console.log("Settlements:", settleCount);
         console.log("Claims:", claimCount);
         console.log("Max Share Value:", maxShareValue);
-    }
-}
-
-/**
- * @title MockOptimismPortal
- * @notice Mock portal for invariant testing
- */
-contract MockOptimismPortal {
-    mapping(bytes32 => bool) public finalizedWithdrawals;
-
-    function finalizeWithdrawalTransaction(Types.WithdrawalTransaction calldata withdrawal) external payable {
-        bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
-        finalizedWithdrawals[withdrawalHash] = true;
     }
 }
