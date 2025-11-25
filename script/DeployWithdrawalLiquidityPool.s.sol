@@ -45,10 +45,12 @@ contract DeployWithdrawalLiquidityPool is Script {
         console.log("OptimismPortal:", optimismPortal);
         console.log("Initial Fee Rate:", initialFeeRate, "basis points");
 
-        vm.startBroadcast();
+        // Get the deployer address BEFORE broadcast (msg.sender changes after vm.startBroadcast)
+        // In Foundry, we need to use tx.origin or pass the address explicitly
+        // For now, we'll just use owner as the deployer for ProxyAdmin
+        address deployer = owner;
 
-        // Get the deployer address (whoever is broadcasting)
-        address deployer = msg.sender;
+        vm.startBroadcast();
 
         // Step 1: Deploy or use existing ProxyAdmin
         ProxyAdmin proxyAdmin;
@@ -68,20 +70,24 @@ contract DeployWithdrawalLiquidityPool is Script {
         WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
         console.log("Implementation deployed at:", address(implementation));
 
-        // Step 3: Deploy proxy with ProxyAdmin as admin
+        // Step 3: Deploy proxy with deployer as temporary admin
         console.log("Deploying Proxy...");
-        Proxy proxy = new Proxy(address(proxyAdmin));
+        Proxy proxy = new Proxy(deployer);
         console.log("Proxy deployed at:", address(proxy));
 
         // Step 4: Encode initialization call
         bytes memory initData =
             abi.encodeCall(WithdrawalLiquidityPool.initialize, (owner, optimismPortal, initialFeeRate));
 
-        // Step 5: Set implementation and initialize through ProxyAdmin
+        // Step 5: Set implementation and initialize directly through Proxy
         console.log("Initializing proxy...");
-        proxyAdmin.upgradeAndCall(payable(address(proxy)), address(implementation), initData);
+        proxy.upgradeToAndCall(address(implementation), initData);
 
-        // Step 6: Transfer ProxyAdmin ownership if needed
+        // Step 6: Change proxy admin to ProxyAdmin
+        console.log("Setting ProxyAdmin as proxy admin...");
+        proxy.changeAdmin(address(proxyAdmin));
+
+        // Step 7: Transfer ProxyAdmin ownership if needed
         if (proxyAdminAddress == address(0) && proxyAdminOwner != deployer) {
             console.log("Transferring ProxyAdmin ownership to:", proxyAdminOwner);
             proxyAdmin.transferOwnership(proxyAdminOwner);

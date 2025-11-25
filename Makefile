@@ -23,6 +23,9 @@ help:
 	@echo "  make deploy-keystore       Deploy using encrypted keystore file"
 	@echo "  make deploy-dry-run        Simulate deployment without broadcasting"
 	@echo ""
+	@echo "  Add SKIP_VERIFY=1 to skip contract verification:"
+	@echo "    make deploy-ledger SKIP_VERIFY=1"
+	@echo ""
 	@echo "Code Quality Commands:"
 	@echo "  make fmt                   Format code with forge fmt"
 	@echo "  make lint                  Run forge lint"
@@ -156,7 +159,7 @@ deploy:
 	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
 		--rpc-url $(RPC_URL) \
 		--broadcast \
-		--verify
+		$(if $(SKIP_VERIFY),,--verify)
 
 .PHONY: deploy-ledger
 deploy-ledger:
@@ -170,7 +173,7 @@ deploy-ledger:
 		--rpc-url $(RPC_URL) \
 		--ledger \
 		--broadcast \
-		--verify
+		$(if $(SKIP_VERIFY),,--verify)
 
 .PHONY: deploy-keystore
 deploy-keystore:
@@ -188,7 +191,7 @@ deploy-keystore:
 		--rpc-url $(RPC_URL) \
 		--keystore $(KEYSTORE_PATH) \
 		--broadcast \
-		--verify
+		$(if $(SKIP_VERIFY),,--verify)
 
 .PHONY: deploy-dry-run
 deploy-dry-run:
