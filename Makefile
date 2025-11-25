@@ -17,6 +17,12 @@ help:
 	@echo "  make build                 Compile contracts"
 	@echo "  make clean-build           Clean and rebuild"
 	@echo ""
+	@echo "Deployment Commands:"
+	@echo "  make deploy                Deploy using PRIVATE_KEY from .env.secrets"
+	@echo "  make deploy-ledger         Deploy using Ledger hardware wallet (most secure)"
+	@echo "  make deploy-keystore       Deploy using encrypted keystore file"
+	@echo "  make deploy-dry-run        Simulate deployment without broadcasting"
+	@echo ""
 	@echo "Code Quality Commands:"
 	@echo "  make fmt                   Format code with forge fmt"
 	@echo "  make lint                  Run forge lint"
@@ -132,3 +138,64 @@ slither:
 mythril:
 	@which myth > /dev/null || (echo "Mythril not installed. Install with: pip install mythril" && exit 1)
 	myth analyze src/WithdrawalLiquidityPool.sol
+
+##
+# Deployment
+##
+-include .env.secrets
+export
+
+.PHONY: deploy
+deploy:
+	@if [ ! -f .env.secrets ]; then \
+		echo "❌ .env.secrets file not found. Copy .env.secrets.example to .env.secrets and configure it."; \
+		exit 1; \
+	fi
+	@echo "🚀 Deploying WithdrawalLiquidityPool..."
+	@echo "⚠️  Note: This will use PRIVATE_KEY from .env.secrets or you can add --ledger/--trezor flag"
+	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
+		--rpc-url $(RPC_URL) \
+		--broadcast \
+		--verify
+
+.PHONY: deploy-ledger
+deploy-ledger:
+	@if [ ! -f .env.secrets ]; then \
+		echo "❌ .env.secrets file not found. Copy .env.secrets.example to .env.secrets and configure it."; \
+		exit 1; \
+	fi
+	@echo "🚀 Deploying WithdrawalLiquidityPool with Ledger..."
+	@echo "📱 Please confirm transaction on your Ledger device"
+	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
+		--rpc-url $(RPC_URL) \
+		--ledger \
+		--broadcast \
+		--verify
+
+.PHONY: deploy-keystore
+deploy-keystore:
+	@if [ ! -f .env.secrets ]; then \
+		echo "❌ .env.secrets file not found. Copy .env.secrets.example to .env.secrets and configure it."; \
+		exit 1; \
+	fi
+	@if [ -z "$(KEYSTORE_PATH)" ]; then \
+		echo "❌ KEYSTORE_PATH not set. Set it in .env.secrets or pass as: make deploy-keystore KEYSTORE_PATH=path/to/keystore"; \
+		exit 1; \
+	fi
+	@echo "🚀 Deploying WithdrawalLiquidityPool with keystore..."
+	@echo "🔐 You will be prompted for keystore password"
+	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
+		--rpc-url $(RPC_URL) \
+		--keystore $(KEYSTORE_PATH) \
+		--broadcast \
+		--verify
+
+.PHONY: deploy-dry-run
+deploy-dry-run:
+	@if [ ! -f .env.secrets ]; then \
+		echo "❌ .env.secrets file not found. Copy .env.secrets.example to .env.secrets and configure it."; \
+		exit 1; \
+	fi
+	@echo "🔍 Simulating deployment (dry run)..."
+	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
+		--rpc-url $(RPC_URL)
