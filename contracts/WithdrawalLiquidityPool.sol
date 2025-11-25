@@ -1,33 +1,46 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity 0.8.15;
 
+// OpenZeppelin Upgradeable Contracts
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+
+// Optimism Base Contracts
+import {ReinitializableBase} from "src/universal/ReinitializableBase.sol";
+import {ProxyAdminOwnedBase} from "src/L1/ProxyAdminOwnedBase.sol";
+
+// Interfaces and Libraries
 import {IOptimismPortal2} from "@eth-optimism-bedrock/interfaces/L1/IOptimismPortal2.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 
-/**
- * @title WithdrawalLiquidityPool
- * @notice Enables instant L2→L1 withdrawals by having LPs front capital while waiting for
- *         canonical bridge finalization (7 days in Phase 1, 1 day in Phase 2 with ZK proofs).
- * @dev This contract implements a share-based accounting system where LPs deposit ETH and
- *      receive proportional shares. Share value increases as fees are earned from providing
- *      instant liquidity for withdrawals.
- *
- * Key Security Features:
- * - Reentrancy protection on all external calls
- * - Share-based accounting prevents first depositor attacks
- * - Locked fee rates prevent manipulation between fulfillment and settlement
- * - Emergency pause mechanism for critical bugs
- *
- * Phase 1 Implementation:
- * - LPs verify withdrawal validity off-chain (trust-minimized via L2 events)
- * - 7-day canonical bridge finalization period
- *
- * Phase 2 Enhancements (Future):
- * - 1-day finalization period
- */
-contract WithdrawalLiquidityPool is ReentrancyGuard {
+/// @custom:proxied true
+/// @title WithdrawalLiquidityPool
+/// @notice Enables instant L2→L1 withdrawals using Optimism's upgradeable proxy pattern
+/// @dev This contract implements a share-based accounting system where LPs deposit ETH and
+///      receive proportional shares. Share value increases as fees are earned from providing
+///      instant liquidity for withdrawals.
+///
+/// Key Security Features:
+/// - Transparent proxy pattern with ProxyAdmin security
+/// - Reinitializable for future upgrades
+/// - Reentrancy protection on all external calls
+/// - Share-based accounting prevents first depositor attacks
+/// - Locked fee rates prevent manipulation between fulfillment and settlement
+/// - Deterministic storage slots prevent storage collisions
+///
+/// Phase 1 Implementation:
+/// - LPs verify withdrawal validity off-chain (trust-minimized via L2 events)
+/// - 7-day canonical bridge finalization period
+///
+/// Phase 2 Enhancements (Future):
+/// - 1-day finalization period with ZK proofs
+contract WithdrawalLiquidityPool is
+    ProxyAdminOwnedBase,
+    OwnableUpgradeable,
+    ReinitializableBase,
+    ReentrancyGuardUpgradeable
+{
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
     //////////////////////////////////////////////////////////////*/
@@ -64,13 +77,6 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
      * @param amount The amount of ETH withdrawn
      */
     event LiquidityWithdrawn(address indexed provider, uint256 shares, uint256 amount);
-
-    /**
-     * @notice Emitted when ownership is transferred
-     * @param previousOwner The previous owner address
-     * @param newOwner The new owner address
-     */
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     /**
      * @notice Emitted when pool fulfills a withdrawal request
@@ -114,11 +120,15 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
                             STATE VARIABLES
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Address of the contract owner (for admin functions)
-    address public owner;
+    /// @notice Version identifier, used for upgrades
+    uint256 public constant VERSION = 0;
 
-    /// @notice Address of the OptimismPortal2 contract (immutable after deployment)
-    IOptimismPortal2 public immutable OPTIMISM_PORTAL;
+    /// @notice Address of the OptimismPortal2 contract
+    /// @dev Set once during initialization and never changed
+    IOptimismPortal2 public optimismPortal;
+
+    /// @notice Block number when contract was initialized
+    uint256 public startBlock;
 
     /// @notice Mapping of LP addresses to their share balances
     mapping(address => uint256) public liquidityShares;
@@ -151,37 +161,52 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
     uint256 public constant MAX_FEE_RATE = 1000;
 
     /*//////////////////////////////////////////////////////////////
-                               MODIFIERS
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @notice Restricts function access to the contract owner only
-     */
-    modifier onlyOwner() {
-        _onlyOwner();
-        _;
-    }
-
-    function _onlyOwner() internal view {
-        if (msg.sender != owner) revert Unauthorized();
-    }
-
-    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Initializes the WithdrawalLiquidityPool contract
-     * @param _optimismPortal Address of the OptimismPortal2 contract
-     * @dev The portal address is immutable and cannot be changed after deployment
-     */
-    constructor(address payable _optimismPortal) {
+    /// @notice Constructs the WithdrawalLiquidityPool contract
+    /// @dev Disables initializers in the implementation contract
+    constructor() ReinitializableBase(1) {
+        _disableInitializers();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                              INITIALIZER
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Initializer for the WithdrawalLiquidityPool contract
+    /// @param _owner Initial owner of the contract
+    /// @param _optimismPortal Address of the OptimismPortal2 contract
+    /// @param _feeRate Initial fee rate in basis points
+    /// @dev This replaces the constructor for upgradeable contracts
+    ///      Can only be called by ProxyAdmin or ProxyAdmin owner
+    function initialize(address _owner, address payable _optimismPortal, uint256 _feeRate)
+        public
+        reinitializer(initVersion())
+    {
+        // Initialization transactions must come from the ProxyAdmin or its owner
+        _assertOnlyProxyAdminOrProxyAdminOwner();
+
+        // Validate inputs
+        if (_owner == address(0)) revert ZeroAddress();
         if (_optimismPortal == address(0)) revert ZeroAddress();
+        if (_feeRate > MAX_FEE_RATE) revert InvalidFeeRate();
 
-        OPTIMISM_PORTAL = IOptimismPortal2(_optimismPortal);
-        owner = msg.sender;
+        // Initialize inherited contracts
+        __Ownable_init();
+        __ReentrancyGuard_init();
 
-        emit OwnershipTransferred(address(0), msg.sender);
+        // Transfer ownership
+        transferOwnership(_owner);
+
+        // Set portal address
+        optimismPortal = IOptimismPortal2(_optimismPortal);
+
+        // Set initial fee rate
+        feeRate = _feeRate;
+
+        // Set start block for event indexing
+        startBlock = block.number;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -318,24 +343,6 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          OWNERSHIP MANAGEMENT
-    //////////////////////////////////////////////////////////////*/
-
-    /**
-     * @notice Transfers ownership of the contract to a new address
-     * @param newOwner The address of the new owner
-     * @dev Only the current owner can call this function
-     */
-    function transferOwnership(address newOwner) external onlyOwner {
-        if (newOwner == address(0)) revert ZeroAddress();
-
-        address oldOwner = owner;
-        owner = newOwner;
-
-        emit OwnershipTransferred(oldOwner, newOwner);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                               VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
@@ -431,14 +438,13 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         if (request.settled) revert AlreadySettled();
 
         // Try to finalize through portal (will revert if already finalized)
-        try OPTIMISM_PORTAL.finalizeWithdrawalTransaction(withdrawal) {
+        try optimismPortal.finalizeWithdrawalTransaction(withdrawal) {
         // Success - portal just sent us ETH
         }
         catch {
             // Already finalized by someone else - just update our accounting
             emit WithdrawalAlreadyFinalized(withdrawalHash);
         }
-
         // Calculate fee using LOCKED fee rate from fulfillment time
         uint256 fee = (request.amount * request.feeRate) / 10000;
         uint256 reimbursement = request.amount - fee;
@@ -492,10 +498,10 @@ contract WithdrawalLiquidityPool is ReentrancyGuard {
         if (request.claimed) revert AlreadyClaimed();
 
         // Check if withdrawal is already finalized on portal
-        if (!OPTIMISM_PORTAL.finalizedWithdrawals(withdrawalHash)) {
+        if (!optimismPortal.finalizedWithdrawals(withdrawalHash)) {
             // Not finalized yet - try to finalize it ourselves
             // If this fails, it means the withdrawal is not ready (proof period not passed, etc.)
-            OPTIMISM_PORTAL.finalizeWithdrawalTransaction(withdrawal);
+            optimismPortal.finalizeWithdrawalTransaction(withdrawal);
             // If we reach here, finalization succeeded and portal sent us ETH
         }
         // If already finalized, the ETH should already be in the contract

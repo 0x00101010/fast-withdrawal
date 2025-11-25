@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity 0.8.15;
 
 import {Test} from "forge-std/Test.sol";
 import {WithdrawalLiquidityPool} from "../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 import {MockOptimismPortal} from "./mocks/MockOptimismPortal.sol";
+import {Proxy} from "src/universal/Proxy.sol";
 
 /**
  * @title WithdrawalLiquidityPoolTest
@@ -29,7 +30,22 @@ contract WithdrawalLiquidityPoolTest is Test {
 
     function setUp() public {
         optimismPortal = new MockOptimismPortal();
-        pool = new WithdrawalLiquidityPool(payable(address(optimismPortal)));
+
+        // Deploy implementation
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+
+        // Deploy proxy with this test contract as admin
+        Proxy proxy = new Proxy(address(this));
+
+        // Encode initialize call
+        bytes memory initData =
+            abi.encodeCall(WithdrawalLiquidityPool.initialize, (owner, payable(address(optimismPortal)), 0));
+
+        // Set implementation and initialize in one call
+        proxy.upgradeToAndCall(address(implementation), initData);
+
+        // Wrap proxy in ABI
+        pool = WithdrawalLiquidityPool(payable(address(proxy)));
 
         // Fund test LPs
         vm.deal(lp1, INITIAL_BALANCE);
@@ -38,26 +54,61 @@ contract WithdrawalLiquidityPoolTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          CONSTRUCTOR TESTS
+                          INITIALIZER TESTS
     //////////////////////////////////////////////////////////////*/
 
-    function test_Constructor_SetsPortalAddress() public view {
-        assertEq(address(pool.OPTIMISM_PORTAL()), address(optimismPortal));
+    function test_Initialize_SetsPortalAddress() public view {
+        assertEq(address(pool.optimismPortal()), address(optimismPortal));
     }
 
-    function test_Constructor_SetsOwner() public view {
+    function test_Initialize_SetsOwner() public view {
         assertEq(pool.owner(), owner);
     }
 
-    function test_Constructor_RevertsOnZeroPortalAddress() public {
-        vm.expectRevert(WithdrawalLiquidityPool.ZeroAddress.selector);
-        new WithdrawalLiquidityPool(payable(address(0)));
+    function test_Initialize_RevertsOnZeroPortalAddress() public {
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+        Proxy proxy = new Proxy(address(this));
+
+        bytes memory initData = abi.encodeCall(WithdrawalLiquidityPool.initialize, (owner, payable(address(0)), 0));
+
+        vm.expectRevert(); // Proxy wraps the revert
+        proxy.upgradeToAndCall(address(implementation), initData);
     }
 
-    function test_Constructor_EmitsOwnershipTransferred() public {
+    function test_Initialize_RevertsOnZeroOwner() public {
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+        Proxy proxy = new Proxy(address(this));
+
+        bytes memory initData =
+            abi.encodeCall(WithdrawalLiquidityPool.initialize, (address(0), payable(address(optimismPortal)), 0));
+
+        vm.expectRevert(); // Proxy wraps the revert
+        proxy.upgradeToAndCall(address(implementation), initData);
+    }
+
+    function test_Initialize_RevertsOnInvalidFeeRate() public {
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+        Proxy proxy = new Proxy(address(this));
+
+        bytes memory initData = abi.encodeCall(
+            WithdrawalLiquidityPool.initialize,
+            (owner, payable(address(optimismPortal)), 1001) // MAX_FEE_RATE is 1000
+        );
+
+        vm.expectRevert(); // Proxy wraps the revert
+        proxy.upgradeToAndCall(address(implementation), initData);
+    }
+
+    function test_Initialize_EmitsOwnershipTransferred() public {
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+        Proxy proxy = new Proxy(address(this));
+
+        bytes memory initData =
+            abi.encodeCall(WithdrawalLiquidityPool.initialize, (owner, payable(address(optimismPortal)), 0));
+
         vm.expectEmit(true, true, false, false);
         emit OwnershipTransferred(address(0), address(this));
-        new WithdrawalLiquidityPool(payable(address(optimismPortal)));
+        proxy.upgradeToAndCall(address(implementation), initData);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -279,13 +330,13 @@ contract WithdrawalLiquidityPoolTest is Test {
     }
 
     function test_TransferOwnership_RevertsOnZeroAddress() public {
-        vm.expectRevert(WithdrawalLiquidityPool.ZeroAddress.selector);
+        vm.expectRevert("Ownable: new owner is the zero address");
         pool.transferOwnership(address(0));
     }
 
     function test_TransferOwnership_RevertsWhenNotOwner() public {
         vm.prank(lp1);
-        vm.expectRevert(WithdrawalLiquidityPool.Unauthorized.selector);
+        vm.expectRevert("Ownable: caller is not the owner");
         pool.transferOwnership(lp1);
     }
 
@@ -628,7 +679,7 @@ contract WithdrawalLiquidityPoolTest is Test {
     }
 
     function test_SetFeeRate_RevertsWhenNotOwner() public {
-        vm.expectRevert(WithdrawalLiquidityPool.Unauthorized.selector);
+        vm.expectRevert("Ownable: caller is not the owner");
         vm.prank(lp1);
         pool.setFeeRate(500);
     }

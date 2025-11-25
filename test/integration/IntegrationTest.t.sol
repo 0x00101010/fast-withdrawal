@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity 0.8.15;
 
 import {Test} from "forge-std/Test.sol";
 import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 import {MockOptimismPortal} from "../mocks/MockOptimismPortal.sol";
+import {Proxy} from "src/universal/Proxy.sol";
 
 /**
  * @title IntegrationTest
@@ -24,7 +25,22 @@ contract IntegrationTest is Test {
 
     function setUp() public {
         optimismPortal = new MockOptimismPortal();
-        pool = new WithdrawalLiquidityPool(payable(address(optimismPortal)));
+
+        // Deploy implementation
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+
+        // Deploy proxy with this test contract as admin
+        Proxy proxy = new Proxy(address(this));
+
+        // Encode initialize call
+        bytes memory initData =
+            abi.encodeCall(WithdrawalLiquidityPool.initialize, (owner, payable(address(optimismPortal)), 0));
+
+        // Set implementation and initialize in one call
+        proxy.upgradeToAndCall(address(implementation), initData);
+
+        // Wrap proxy in ABI
+        pool = WithdrawalLiquidityPool(payable(address(proxy)));
 
         // Fund LPs
         vm.deal(lp1, 100 ether);

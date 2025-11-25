@@ -7,8 +7,14 @@
   },
   "lib/openzeppelin-contracts": {
     "tag": {
-      "name": "v5.5.0",
-      "rev": "fcbae5394ae8ad52d8e580a3477db99814b9d565"
+      "name": "v4.9.3",
+      "rev": "fd81a96f01cc42ef1c9a5399364968d0e07e9e90"
+    }
+  },
+  "lib/openzeppelin-contracts-upgradeable": {
+    "tag": {
+      "name": "v4.9.3",
+      "rev": "3d4c0d5741b131c231e558d7a6213392ab3672a5"
     }
   }
 }

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity 0.8.15;
 
 import {Test} from "forge-std/Test.sol";
 import {console} from "forge-std/console.sol";
-import {
-    WithdrawalLiquidityPool
-} from "../../contracts/WithdrawalLiquidityPool.sol";
+import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 import {MockOptimismPortal} from "../mocks/MockOptimismPortal.sol";
+import {Proxy} from "src/universal/Proxy.sol";
 
 /**
  * @title InvariantTest
@@ -23,8 +22,21 @@ contract InvariantTest is Test {
         // Deploy mock portal
         address mockPortal = address(new MockOptimismPortal());
 
-        // Deploy pool
-        pool = new WithdrawalLiquidityPool(payable(mockPortal));
+        // Deploy implementation
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+
+        // Deploy proxy with this test contract as admin
+        Proxy proxy = new Proxy(address(this));
+
+        // Encode initialize call
+        bytes memory initData =
+            abi.encodeCall(WithdrawalLiquidityPool.initialize, (address(this), payable(mockPortal), 0));
+
+        // Set implementation and initialize in one call
+        proxy.upgradeToAndCall(address(implementation), initData);
+
+        // Wrap proxy in ABI
+        pool = WithdrawalLiquidityPool(payable(address(proxy)));
 
         // Deploy handler
         handler = new Handler(pool, mockPortal);
@@ -48,11 +60,7 @@ contract InvariantTest is Test {
         uint256 total = pool.totalLiquidity();
         uint256 available = pool.availableLiquidity();
 
-        assertGe(
-            total,
-            available,
-            "Total liquidity must be >= available liquidity"
-        );
+        assertGe(total, available, "Total liquidity must be >= available liquidity");
     }
 
     /**
@@ -64,11 +72,7 @@ contract InvariantTest is Test {
         uint256 previousShareValue = handler.maxShareValue();
 
         // Share value should never decrease (it can only increase from fees or stay same)
-        assertGe(
-            currentShareValue,
-            previousShareValue,
-            "Share value should never decrease"
-        );
+        assertGe(currentShareValue, previousShareValue, "Share value should never decrease");
     }
 
     /**
@@ -109,11 +113,7 @@ contract InvariantTest is Test {
         // When LPs provide liquidity, ETH is sent to users, reducing contract balance
         // The locked amount (totalLiquidity - availableLiquidity) represents ETH already sent to users
         // Contract balance should always be >= available liquidity
-        assertGe(
-            contractBalance,
-            availableLiquidity,
-            "Contract ETH should be >= available liquidity"
-        );
+        assertGe(contractBalance, availableLiquidity, "Contract ETH should be >= available liquidity");
     }
 
     /**
@@ -123,11 +123,7 @@ contract InvariantTest is Test {
         uint256 available = pool.availableLiquidity();
         uint256 total = pool.totalLiquidity();
 
-        assertLe(
-            available,
-            total,
-            "Available liquidity cannot exceed total liquidity"
-        );
+        assertLe(available, total, "Available liquidity cannot exceed total liquidity");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -213,9 +209,7 @@ contract Handler is Test {
             // Expected reverts with reason strings
             // For depositLiquidity, only ZeroAmount is expected, but we bound amount >= 0.01
             // So any revert here is unexpected
-            revert(
-                string.concat("Unexpected depositLiquidity revert: ", reason)
-            );
+            revert(string.concat("Unexpected depositLiquidity revert: ", reason));
         } catch (bytes memory lowLevelData) {
             // Check if it's an expected custom error
             // casting to 'bytes4' is safe because error data always includes 4-byte selector
@@ -227,9 +221,7 @@ contract Handler is Test {
             // ZeroAmount() - but shouldn't happen since we bound amount >= 0.01
             if (selector == WithdrawalLiquidityPool.ZeroAmount.selector) {
                 // This is unexpected given our bounds
-                revert(
-                    "Unexpected ZeroAmount in depositLiquidity (amount is bounded >= 0.01)"
-                );
+                revert("Unexpected ZeroAmount in depositLiquidity (amount is bounded >= 0.01)");
             }
 
             // Any other error is unexpected
@@ -256,9 +248,7 @@ contract Handler is Test {
             withdrawCount++;
         } catch Error(string memory reason) {
             // Unexpected string revert
-            revert(
-                string.concat("Unexpected withdrawLiquidity revert: ", reason)
-            );
+            revert(string.concat("Unexpected withdrawLiquidity revert: ", reason));
         } catch (bytes memory lowLevelData) {
             // casting to 'bytes4' is safe because error data always includes 4-byte selector
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -268,11 +258,9 @@ contract Handler is Test {
 
             // Expected errors that can legitimately happen during fuzzing:
             if (
-                selector ==
-                WithdrawalLiquidityPool.InsufficientShares.selector ||
-                selector ==
-                WithdrawalLiquidityPool.InsufficientLiquidity.selector ||
-                selector == WithdrawalLiquidityPool.ZeroAmount.selector
+                selector == WithdrawalLiquidityPool.InsufficientShares.selector
+                    || selector == WithdrawalLiquidityPool.InsufficientLiquidity.selector
+                    || selector == WithdrawalLiquidityPool.ZeroAmount.selector
             ) {
                 // Expected failure, ignore
                 return;
@@ -283,11 +271,7 @@ contract Handler is Test {
         }
     }
 
-    function provideLiquidity(
-        uint256 lpIndex,
-        uint256 userIndex,
-        uint256 amount
-    ) public {
+    function provideLiquidity(uint256 lpIndex, uint256 userIndex, uint256 amount) public {
         // Bound inputs
         lpIndex = bound(lpIndex, 0, liquidityProviders.length - 1);
         userIndex = bound(userIndex, 0, users.length - 1);
@@ -298,15 +282,9 @@ contract Handler is Test {
 
         // Create withdrawal
         nonce++;
-        Types.WithdrawalTransaction memory withdrawal = Types
-            .WithdrawalTransaction({
-                nonce: nonce,
-                sender: user,
-                target: address(pool),
-                value: amount,
-                gasLimit: 100000,
-                data: ""
-            });
+        Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
+            nonce: nonce, sender: user, target: address(pool), value: amount, gasLimit: 100000, data: ""
+        });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -333,9 +311,7 @@ contract Handler is Test {
             }
         } catch Error(string memory reason) {
             // Unexpected string revert
-            revert(
-                string.concat("Unexpected provideLiquidity revert: ", reason)
-            );
+            revert(string.concat("Unexpected provideLiquidity revert: ", reason));
         } catch (bytes memory lowLevelData) {
             // casting to 'bytes4' is safe because error data always includes 4-byte selector
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -343,11 +319,10 @@ contract Handler is Test {
 
             // Expected errors:
             if (
-                selector == WithdrawalLiquidityPool.AlreadyFulfilled.selector ||
-                selector ==
-                WithdrawalLiquidityPool.InsufficientLiquidity.selector ||
-                selector == WithdrawalLiquidityPool.ZeroAmount.selector ||
-                selector == WithdrawalLiquidityPool.ZeroAddress.selector
+                selector == WithdrawalLiquidityPool.AlreadyFulfilled.selector
+                    || selector == WithdrawalLiquidityPool.InsufficientLiquidity.selector
+                    || selector == WithdrawalLiquidityPool.ZeroAmount.selector
+                    || selector == WithdrawalLiquidityPool.ZeroAddress.selector
             ) {
                 // Expected failure, ignore
                 return;
@@ -366,19 +341,14 @@ contract Handler is Test {
         address user = users[userIndex];
 
         // Create withdrawal that might have been fulfilled
-        Types.WithdrawalTransaction memory withdrawal = Types
-            .WithdrawalTransaction({
-                nonce: bound(
-                    nonce > 0 ? nonce - 1 : 1,
-                    1,
-                    nonce > 0 ? nonce : 1
-                ),
-                sender: user,
-                target: address(pool),
-                value: amount,
-                gasLimit: 100000,
-                data: ""
-            });
+        Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
+            nonce: bound(nonce > 0 ? nonce - 1 : 1, 1, nonce > 0 ? nonce : 1),
+            sender: user,
+            target: address(pool),
+            value: amount,
+            gasLimit: 100000,
+            data: ""
+        });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -399,9 +369,7 @@ contract Handler is Test {
             }
         } catch Error(string memory reason) {
             // Unexpected string revert
-            revert(
-                string.concat("Unexpected settleWithdrawal revert: ", reason)
-            );
+            revert(string.concat("Unexpected settleWithdrawal revert: ", reason));
         } catch (bytes memory lowLevelData) {
             // casting to 'bytes4' is safe because error data always includes 4-byte selector
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -409,8 +377,8 @@ contract Handler is Test {
 
             // Expected errors:
             if (
-                selector == WithdrawalLiquidityPool.NotFulfilled.selector ||
-                selector == WithdrawalLiquidityPool.AlreadySettled.selector
+                selector == WithdrawalLiquidityPool.NotFulfilled.selector
+                    || selector == WithdrawalLiquidityPool.AlreadySettled.selector
             ) {
                 // Expected failure, ignore
                 return;
@@ -430,15 +398,9 @@ contract Handler is Test {
 
         // Create withdrawal
         nonce++;
-        Types.WithdrawalTransaction memory withdrawal = Types
-            .WithdrawalTransaction({
-                nonce: nonce,
-                sender: user,
-                target: address(pool),
-                value: amount,
-                gasLimit: 100000,
-                data: ""
-            });
+        Types.WithdrawalTransaction memory withdrawal = Types.WithdrawalTransaction({
+            nonce: nonce, sender: user, target: address(pool), value: amount, gasLimit: 100000, data: ""
+        });
 
         bytes32 withdrawalHash = Hashing.hashWithdrawal(withdrawal);
 
@@ -453,12 +415,7 @@ contract Handler is Test {
             claimCount++;
         } catch Error(string memory reason) {
             // Unexpected string revert
-            revert(
-                string.concat(
-                    "Unexpected claimFallbackWithdrawal revert: ",
-                    reason
-                )
-            );
+            revert(string.concat("Unexpected claimFallbackWithdrawal revert: ", reason));
         } catch (bytes memory lowLevelData) {
             // casting to 'bytes4' is safe because error data always includes 4-byte selector
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -466,11 +423,10 @@ contract Handler is Test {
 
             // Expected errors:
             if (
-                selector ==
-                WithdrawalLiquidityPool.WithdrawalFulfilledByLP.selector ||
-                selector == WithdrawalLiquidityPool.AlreadyClaimed.selector ||
-                selector == WithdrawalLiquidityPool.ZeroAmount.selector ||
-                selector == WithdrawalLiquidityPool.ZeroAddress.selector
+                selector == WithdrawalLiquidityPool.WithdrawalFulfilledByLP.selector
+                    || selector == WithdrawalLiquidityPool.AlreadyClaimed.selector
+                    || selector == WithdrawalLiquidityPool.ZeroAmount.selector
+                    || selector == WithdrawalLiquidityPool.ZeroAddress.selector
             ) {
                 // Expected failure, ignore
                 return;
@@ -486,8 +442,9 @@ contract Handler is Test {
         newRate = bound(newRate, 0, 1000); // 0-10%
 
         try pool.setFeeRate(newRate) {
-            // Fee rate updated
-        } catch Error(string memory reason) {
+        // Fee rate updated
+        }
+        catch Error(string memory reason) {
             // Unexpected string revert
             revert(string.concat("Unexpected setFeeRate revert: ", reason));
         } catch (bytes memory lowLevelData) {
@@ -497,8 +454,8 @@ contract Handler is Test {
 
             // Expected errors:
             if (
-                selector == WithdrawalLiquidityPool.Unauthorized.selector ||
-                selector == WithdrawalLiquidityPool.InvalidFeeRate.selector
+                selector == WithdrawalLiquidityPool.Unauthorized.selector
+                    || selector == WithdrawalLiquidityPool.InvalidFeeRate.selector
             ) {
                 // Expected failure (only owner can call, rate must be <= MAX)
                 // Unauthorized shouldn't happen since handler is deployed by test
