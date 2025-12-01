@@ -38,10 +38,7 @@ contract E2E_WithdrawalFlow is Base {
         console.log("\n=== E2E Withdrawal Flow Test ===\n");
 
         // Verify pool is deployed
-        require(
-            poolProxyAddress != address(0),
-            "Pool not deployed. Run 1_Setup.s.sol first."
-        );
+        require(poolProxyAddress != address(0), "Pool not deployed. Run 1_Setup.s.sol first.");
 
         console.log("Pool Address:", address(pool));
         console.log("OptimismPortal:", address(portal));
@@ -107,7 +104,7 @@ contract E2E_WithdrawalFlow is Base {
         console.log("");
 
         // Check withdrawal was fulfilled
-        (, , bool fulfilled, , ) = pool.withdrawalRequests(withdrawalHash);
+        (,, bool fulfilled,,) = pool.withdrawalRequests(withdrawalHash);
         console.log("Withdrawal fulfilled:", fulfilled);
         console.log("");
 
@@ -119,9 +116,7 @@ contract E2E_WithdrawalFlow is Base {
         // Mock the proveWithdrawalTransaction call to succeed
         // We can't actually call it without real L2 proofs, so we'll skip this
         // The important part is that we wait 7 days before finalization
-        console.log(
-            "Skipping actual proof submission (requires real L2 data)"
-        );
+        console.log("Skipping actual proof submission (requires real L2 data)");
         console.log("In real scenario, someone would call:");
         console.log("  portal.proveWithdrawalTransaction(...)");
         console.log("");
@@ -142,9 +137,7 @@ contract E2E_WithdrawalFlow is Base {
 
         // Mock the portal.finalizeWithdrawalTransaction call
         vm.mockCall(
-            address(portal),
-            abi.encodeWithSelector(portal.finalizeWithdrawalTransaction.selector),
-            abi.encode()
+            address(portal), abi.encodeWithSelector(portal.finalizeWithdrawalTransaction.selector), abi.encode()
         );
 
         // Fund portal to send ETH to pool
@@ -157,7 +150,7 @@ contract E2E_WithdrawalFlow is Base {
 
         // Manually send ETH from portal to simulate finalization
         vm.startBroadcast(address(portal));
-        (bool success, ) = address(pool).call{value: WITHDRAWAL_AMOUNT}("");
+        (bool success,) = address(pool).call{value: WITHDRAWAL_AMOUNT}("");
         require(success, "ETH transfer failed");
         vm.stopBroadcast();
 
@@ -167,7 +160,7 @@ contract E2E_WithdrawalFlow is Base {
         console.log("");
 
         // Check withdrawal settled
-        (, , , bool settledAfter, ) = pool.withdrawalRequests(withdrawalHash);
+        (,,, bool settledAfter,) = pool.withdrawalRequests(withdrawalHash);
         console.log("Withdrawal settled:", settledAfter);
         console.log("");
 
@@ -186,11 +179,7 @@ contract E2E_WithdrawalFlow is Base {
         // Final pool state
         console.log("=== Final Pool State ===");
         console.log("Total liquidity:", pool.totalLiquidity() / 1 ether, "ETH");
-        console.log(
-            "Available liquidity:",
-            pool.availableLiquidity() / 1 ether,
-            "ETH"
-        );
+        console.log("Available liquidity:", pool.availableLiquidity() / 1 ether, "ETH");
         console.log("Total shares:", pool.totalShares());
         console.log("Pool balance:", address(pool).balance / 1 ether, "ETH");
         console.log("");
