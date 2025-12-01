@@ -35,6 +35,12 @@ help:
 	@echo "  make slither               Run Slither static analysis"
 	@echo "  make mythril               Run Mythril security analysis"
 	@echo ""
+	@echo "Anvil Fork Testing Commands:"
+	@echo "  make test-anvil-fork       Start Anvil fork of Sepolia (Terminal 1)"
+	@echo "  make test-setup            Deploy pool on Anvil fork (Terminal 2)"
+	@echo "  make test-update-env       Update .env.test with deployed addresses"
+	@echo "  make test-verify-setup     Verify setup is correct (optional)"
+	@echo ""
 
 ##
 # Dependency Management
@@ -203,6 +209,82 @@ deploy-dry-run:
 	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
 		--rpc-url $(RPC_URL)
 
-.PHONY: anvil-fork
-anvil-fork:
+##
+# Anvil Fork Testing
+##
+-include .env.test
+-include .env.test.secrets
+export
+
+.PHONY: test-anvil-fork
+test-anvil-fork:
+	@if [ -z "$(SEPOLIA_L1_URL)" ]; then \
+		echo "❌ SEPOLIA_L1_URL not set. Source .env.test.secrets"; \
+		exit 1; \
+	fi
+	@echo "🔱 Starting Anvil fork of Sepolia..."
+	@echo "   RPC: $(SEPOLIA_L1_URL)"
+	@echo "   Fork Block: $(FORK_BLOCK_NUMBER)"
+	@echo "   Press Ctrl+C to stop"
 	anvil --fork-url $(SEPOLIA_L1_URL) --fork-block-number $(FORK_BLOCK_NUMBER)
+
+.PHONY: test-setup
+test-setup:
+	@if [ ! -f .env.test ]; then \
+		echo "❌ .env.test not found. Copy .env.test.example to .env.test"; \
+		exit 1; \
+	fi
+	@if [ ! -f .env.test.secrets ]; then \
+		echo "❌ .env.test.secrets not found. Copy .env.test.secrets.example to .env.test.secrets"; \
+		exit 1; \
+	fi
+	@if [ -z "$(ANVIL_RPC_URL)" ]; then \
+		echo "❌ ANVIL_RPC_URL not set. Source .env.test"; \
+		exit 1; \
+	fi
+	@echo "🚀 Running setup script on Anvil fork..."
+	@echo "   Using Anvil default account"
+	forge script script/test/1_Setup.s.sol:Setup \
+		--rpc-url $(ANVIL_RPC_URL) \
+		--broadcast \
+		--unlocked
+
+.PHONY: test-update-env
+test-update-env:
+	@if [ ! -f .env.test.deployed ]; then \
+		echo "❌ .env.test.deployed not found. Run make test-setup first."; \
+		exit 1; \
+	fi
+	@echo "📝 Updating .env.test with deployed addresses..."
+	@# Remove old deployed address lines if they exist
+	@grep -v "^POOL_PROXY_ADDRESS=" .env.test > .env.test.tmp || true
+	@grep -v "^POOL_IMPLEMENTATION_ADDRESS=" .env.test.tmp > .env.test.tmp2 || true
+	@grep -v "^POOL_PROXY_ADMIN_ADDRESS=" .env.test.tmp2 > .env.test.tmp3 || true
+	@# Remove auto-generated comment if it exists
+	@grep -v "^# Deployed Contract Addresses" .env.test.tmp3 > .env.test.tmp4 || true
+	@# Append new addresses
+	@echo "" >> .env.test.tmp4
+	@cat .env.test.deployed >> .env.test.tmp4
+	@mv .env.test.tmp4 .env.test
+	@rm -f .env.test.tmp .env.test.tmp2 .env.test.tmp3
+	@echo "✓ .env.test updated with new addresses"
+	@echo ""
+	@cat .env.test.deployed
+
+.PHONY: test-verify-setup
+test-verify-setup:
+	@if [ ! -f .env.test ]; then \
+		echo "❌ .env.test not found. Copy .env.test.example to .env.test"; \
+		exit 1; \
+	fi
+	@if [ ! -f .env.test.secrets ]; then \
+		echo "❌ .env.test.secrets not found. Copy .env.test.secrets.example to .env.test.secrets"; \
+		exit 1; \
+	fi
+	@if [ -z "$(ANVIL_RPC_URL)" ]; then \
+		echo "❌ ANVIL_RPC_URL not set. Source .env.test"; \
+		exit 1; \
+	fi
+	@echo "✅ Verifying setup..."
+	forge script script/test/1a_VerifySetup.s.sol:VerifySetup \
+		--rpc-url $(ANVIL_RPC_URL)

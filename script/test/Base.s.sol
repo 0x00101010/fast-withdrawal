@@ -116,7 +116,7 @@ contract Base is Script {
         );
 
         // Load RPC URLs
-        sepoliaRpcUrl = vm.envString("SEPOLIA_RPC_URL");
+        sepoliaRpcUrl = vm.envString("SEPOLIA_L1_URL");
         anvilRpcUrl = vm.envString("ANVIL_RPC_URL");
 
         // Connect to L1 contracts

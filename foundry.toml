@@ -13,6 +13,10 @@ remappings = [
     "@lib-keccak/=lib/optimism/packages/contracts-bedrock/lib/lib-keccak/contracts/lib/",
     "src/=lib/optimism/packages/contracts-bedrock/src/",
 ]
+fs_permissions = [
+    { access = "read-write", path = ".env.test" },
+    { access = "write", path = ".env.test.deployed" }
+]
 
 # Fuzzing configuration
 [fuzz]
