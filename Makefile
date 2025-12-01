@@ -202,3 +202,7 @@ deploy-dry-run:
 	@echo "🔍 Simulating deployment (dry run)..."
 	forge script script/DeployWithdrawalLiquidityPool.s.sol:DeployWithdrawalLiquidityPool \
 		--rpc-url $(RPC_URL)
+
+.PHONY: anvil-fork
+anvil-fork:
+	anvil --fork-url $(SEPOLIA_L1_URL) --fork-block-number $(FORK_BLOCK_NUMBER)
