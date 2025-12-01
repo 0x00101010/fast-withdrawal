@@ -3,19 +3,13 @@ pragma solidity 0.8.15;
 
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
-import {
-    WithdrawalLiquidityPool
-} from "../../contracts/WithdrawalLiquidityPool.sol";
+import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {ProxyAdmin} from "src/universal/ProxyAdmin.sol";
 import {Proxy} from "src/universal/Proxy.sol";
 
 // Optimism L1 contracts
-import {
-    IOptimismPortal2
-} from "@eth-optimism-bedrock/interfaces/L1/IOptimismPortal2.sol";
-import {
-    IDisputeGameFactory
-} from "@eth-optimism-bedrock/interfaces/dispute/IDisputeGameFactory.sol";
+import {IOptimismPortal2} from "@eth-optimism-bedrock/interfaces/L1/IOptimismPortal2.sol";
+import {IDisputeGameFactory} from "@eth-optimism-bedrock/interfaces/dispute/IDisputeGameFactory.sol";
 import {Types} from "src/libraries/Types.sol";
 import {Hashing} from "src/libraries/Hashing.sol";
 
@@ -81,12 +75,8 @@ contract Base is Script {
      */
     function loadConfig() internal {
         // Load L1 contract addresses
-        sepoliaOptimismPortal = payable(
-            vm.envAddress("SEPOLIA_OPTIMISM_PORTAL")
-        );
-        sepoliaDisputeGameFactory = vm.envAddress(
-            "SEPOLIA_DISPUTE_GAME_FACTORY"
-        );
+        sepoliaOptimismPortal = payable(vm.envAddress("SEPOLIA_OPTIMISM_PORTAL"));
+        sepoliaDisputeGameFactory = vm.envAddress("SEPOLIA_DISPUTE_GAME_FACTORY");
 
         // Load test accounts
         testOwner = vm.envAddress("TEST_OWNER");
@@ -96,24 +86,14 @@ contract Base is Script {
         testUser2 = vm.envAddress("TEST_USER2");
 
         // Load test parameters
-        testWithdrawalAmount = _parseEther(
-            vm.envString("TEST_WITHDRAWAL_AMOUNT")
-        );
-        testLpDepositAmount = _parseEther(
-            vm.envString("TEST_LP_DEPOSIT_AMOUNT")
-        );
+        testWithdrawalAmount = _parseEther(vm.envString("TEST_WITHDRAWAL_AMOUNT"));
+        testLpDepositAmount = _parseEther(vm.envString("TEST_LP_DEPOSIT_AMOUNT"));
         testFeeRate = vm.envUint("TEST_FEE_RATE");
 
         // Load deployed pool addresses (may be empty before Setup script runs)
         poolProxyAddress = vm.envOr("POOL_PROXY_ADDRESS", address(0));
-        poolImplementationAddress = vm.envOr(
-            "POOL_IMPLEMENTATION_ADDRESS",
-            address(0)
-        );
-        poolProxyAdminAddress = vm.envOr(
-            "POOL_PROXY_ADMIN_ADDRESS",
-            address(0)
-        );
+        poolImplementationAddress = vm.envOr("POOL_IMPLEMENTATION_ADDRESS", address(0));
+        poolProxyAdminAddress = vm.envOr("POOL_PROXY_ADMIN_ADDRESS", address(0));
 
         // Load RPC URLs
         sepoliaRpcUrl = vm.envString("SEPOLIA_L1_URL");
@@ -157,12 +137,7 @@ contract Base is Script {
         bytes memory data
     ) public pure returns (Types.WithdrawalTransaction memory withdrawal) {
         withdrawal = Types.WithdrawalTransaction({
-            nonce: nonce,
-            sender: sender,
-            target: target,
-            value: value,
-            gasLimit: gasLimit,
-            data: data
+            nonce: nonce, sender: sender, target: target, value: value, gasLimit: gasLimit, data: data
         });
     }
 
@@ -174,21 +149,19 @@ contract Base is Script {
      * @param value Amount of ETH
      * @return withdrawal The withdrawal transaction struct
      */
-    function createSimpleWithdrawal(
-        uint256 nonce,
-        address sender,
-        address recipient,
-        uint256 value
-    ) public pure returns (Types.WithdrawalTransaction memory withdrawal) {
-        return
-            createWithdrawal(
-                nonce,
-                sender,
-                recipient,
-                value,
-                100_000, // Standard gas limit for ETH transfer
-                "" // No calldata for simple ETH transfer
-            );
+    function createSimpleWithdrawal(uint256 nonce, address sender, address recipient, uint256 value)
+        public
+        pure
+        returns (Types.WithdrawalTransaction memory withdrawal)
+    {
+        return createWithdrawal(
+            nonce,
+            sender,
+            recipient,
+            value,
+            100_000, // Standard gas limit for ETH transfer
+            "" // No calldata for simple ETH transfer
+        );
     }
 
     /**
@@ -196,9 +169,7 @@ contract Base is Script {
      * @param withdrawal The withdrawal transaction
      * @return Hash of the withdrawal
      */
-    function hashWithdrawal(
-        Types.WithdrawalTransaction memory withdrawal
-    ) public pure returns (bytes32) {
+    function hashWithdrawal(Types.WithdrawalTransaction memory withdrawal) public pure returns (bytes32) {
         return Hashing.hashWithdrawal(withdrawal);
     }
 
@@ -221,10 +192,7 @@ contract Base is Script {
      * @param timestamp Target timestamp
      */
     function advanceToTimestamp(uint256 timestamp) public {
-        require(
-            timestamp > block.timestamp,
-            "Target timestamp must be in the future"
-        );
+        require(timestamp > block.timestamp, "Target timestamp must be in the future");
         vm.warp(timestamp);
         console.log("Advanced to timestamp:", timestamp);
     }
@@ -309,13 +277,8 @@ contract Base is Script {
         console.log("Hash:", vm.toString(withdrawalHash));
 
         // Check withdrawal request status
-        (
-            uint256 amount,
-            uint256 feeRateLocked,
-            bool fulfilled,
-            bool settled,
-            bool claimed
-        ) = pool.withdrawalRequests(withdrawalHash);
+        (uint256 amount, uint256 feeRateLocked, bool fulfilled, bool settled, bool claimed) =
+            pool.withdrawalRequests(withdrawalHash);
         console.log("Amount:    ", amount);
         console.log("Fee Rate:  ", feeRateLocked);
         console.log("Fulfilled: ", fulfilled);
@@ -336,9 +299,7 @@ contract Base is Script {
      * @param amountStr Amount in ether as string
      * @return Amount in wei
      */
-    function _parseEther(
-        string memory amountStr
-    ) internal pure returns (uint256) {
+    function _parseEther(string memory amountStr) internal pure returns (uint256) {
         bytes memory amountBytes = bytes(amountStr);
         uint256 integerPart = 0;
         uint256 fractionalPart = 0;

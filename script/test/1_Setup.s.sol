@@ -3,9 +3,7 @@ pragma solidity 0.8.15;
 
 import {Base} from "./Base.s.sol";
 import {console} from "forge-std/console.sol";
-import {
-    WithdrawalLiquidityPool
-} from "../../contracts/WithdrawalLiquidityPool.sol";
+import {WithdrawalLiquidityPool} from "../../contracts/WithdrawalLiquidityPool.sol";
 import {ProxyAdmin} from "@eth-optimism-bedrock/src/universal/ProxyAdmin.sol";
 import {Proxy} from "@eth-optimism-bedrock/src/universal/Proxy.sol";
 
@@ -60,9 +58,7 @@ contract Setup is Base {
         console.log("ProxyAdmin deployed at:", address(proxyAdmin));
 
         // Step 2: Deploy implementation
-        console.log(
-            "\n[2/7] Deploying WithdrawalLiquidityPool implementation..."
-        );
+        console.log("\n[2/7] Deploying WithdrawalLiquidityPool implementation...");
         WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
         console.log("Implementation deployed at:", address(implementation));
 
@@ -73,10 +69,8 @@ contract Setup is Base {
 
         // Step 4: Encode initialization call
         console.log("\n[4/7] Initializing proxy...");
-        bytes memory initData = abi.encodeCall(
-            WithdrawalLiquidityPool.initialize,
-            (deployer, sepoliaOptimismPortal, testFeeRate)
-        );
+        bytes memory initData =
+            abi.encodeCall(WithdrawalLiquidityPool.initialize, (deployer, sepoliaOptimismPortal, testFeeRate));
 
         // Set implementation and initialize
         proxy.upgradeToAndCall(address(implementation), initData);
@@ -124,9 +118,7 @@ contract Setup is Base {
         console.log("  testUser2:", testUser2.balance / 1 ether, "ETH");
 
         // Wrap proxy in ABI for easier interaction
-        WithdrawalLiquidityPool pool = WithdrawalLiquidityPool(
-            payable(address(proxy))
-        );
+        WithdrawalLiquidityPool pool = WithdrawalLiquidityPool(payable(address(proxy)));
 
         // Step 6: Transfer ownership to testOwner (if different from deployer)
         if (testOwner != deployer) {
@@ -160,39 +152,21 @@ contract Setup is Base {
         console.log("Total Liquidity:     ", pool.totalLiquidity());
 
         console.log("\n=== Test Account Balances ===");
-        console.log(
-            "Owner:               ",
-            testOwner.balance / 1 ether,
-            "ETH"
-        );
+        console.log("Owner:               ", testOwner.balance / 1 ether, "ETH");
         console.log("LP1:                 ", testLp1.balance / 1 ether, "ETH");
         console.log("LP2:                 ", testLp2.balance / 1 ether, "ETH");
-        console.log(
-            "User1:               ",
-            testUser1.balance / 1 ether,
-            "ETH"
-        );
-        console.log(
-            "User2:               ",
-            testUser2.balance / 1 ether,
-            "ETH"
-        );
+        console.log("User1:               ", testUser1.balance / 1 ether, "ETH");
+        console.log("User2:               ", testUser2.balance / 1 ether, "ETH");
 
         console.log("\n=== Verification ===");
         console.log("Running automatic verification checks...\n");
 
         // Verify pool ownership
-        require(
-            pool.owner() == testOwner,
-            "VERIFICATION FAILED: Pool owner incorrect"
-        );
+        require(pool.owner() == testOwner, "VERIFICATION FAILED: Pool owner incorrect");
         console.log("[PASS] Pool owner is testOwner");
 
         // Verify ProxyAdmin ownership
-        require(
-            proxyAdmin.owner() == testOwner,
-            "VERIFICATION FAILED: ProxyAdmin owner incorrect"
-        );
+        require(proxyAdmin.owner() == testOwner, "VERIFICATION FAILED: ProxyAdmin owner incorrect");
         console.log("[PASS] ProxyAdmin owner is testOwner");
 
         // Verify pool configuration
@@ -202,29 +176,17 @@ contract Setup is Base {
         );
         console.log("[PASS] OptimismPortal address correct");
 
-        require(
-            pool.feeRate() == testFeeRate,
-            "VERIFICATION FAILED: Fee rate incorrect"
-        );
+        require(pool.feeRate() == testFeeRate, "VERIFICATION FAILED: Fee rate incorrect");
         console.log("[PASS] Fee rate correct");
 
         // Verify test account balances
-        require(
-            testOwner.balance >= 90 ether,
-            "VERIFICATION FAILED: testOwner balance too low"
-        );
+        require(testOwner.balance >= 90 ether, "VERIFICATION FAILED: testOwner balance too low");
         console.log("[PASS] testOwner balance sufficient");
 
-        require(
-            testLp1.balance == 100 ether,
-            "VERIFICATION FAILED: testLp1 balance incorrect"
-        );
+        require(testLp1.balance == 100 ether, "VERIFICATION FAILED: testLp1 balance incorrect");
         console.log("[PASS] testLp1 balance correct");
 
-        require(
-            testLp2.balance == 100 ether,
-            "VERIFICATION FAILED: testLp2 balance incorrect"
-        );
+        require(testLp2.balance == 100 ether, "VERIFICATION FAILED: testLp2 balance incorrect");
         console.log("[PASS] testLp2 balance correct");
 
         console.log("\n[PASS] All verification checks passed!");
