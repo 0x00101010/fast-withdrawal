@@ -39,6 +39,7 @@ help:
 	@echo "  make test-anvil-fork       Start Anvil fork of Sepolia (Terminal 1)"
 	@echo "  make test-setup            Deploy pool on Anvil fork (Terminal 2)"
 	@echo "  make test-update-env       Update .env.test with deployed addresses"
+	@echo "  make test-e2e              Run E2E withdrawal flow test"
 	@echo "  make test-verify-setup     Verify setup is correct (optional)"
 	@echo ""
 
@@ -270,6 +271,26 @@ test-update-env:
 	@echo "✓ .env.test updated with new addresses"
 	@echo ""
 	@cat .env.test.deployed
+
+.PHONY: test-e2e
+test-e2e:
+	@if [ ! -f .env.test ]; then \
+		echo "❌ .env.test not found. Copy .env.test.example to .env.test"; \
+		exit 1; \
+	fi
+	@if [ ! -f .env.test.secrets ]; then \
+		echo "❌ .env.test.secrets not found. Copy .env.test.secrets.example to .env.test.secrets"; \
+		exit 1; \
+	fi
+	@if [ -z "$(ANVIL_RPC_URL)" ]; then \
+		echo "❌ ANVIL_RPC_URL not set. Source .env.test"; \
+		exit 1; \
+	fi
+	@echo "🚀 Running E2E withdrawal flow test..."
+	forge script script/test/2_E2E_WithdrawalFlow.s.sol:E2E_WithdrawalFlow \
+		--rpc-url $(ANVIL_RPC_URL) \
+		--broadcast \
+		--unlocked
 
 .PHONY: test-verify-setup
 test-verify-setup:

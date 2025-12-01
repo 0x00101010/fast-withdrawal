@@ -9,12 +9,13 @@ import {Proxy} from "@eth-optimism-bedrock/src/universal/Proxy.sol";
 
 /**
  * @title Setup
- * @notice Deploys WithdrawalLiquidityPool on Anvil fork and funds test accounts
+ * @notice Deploys WithdrawalLiquidityPool on Anvil fork using deterministic CREATE2
  * @dev This script:
- *      1. Deploys ProxyAdmin, Implementation, and Proxy
- *      2. Initializes the pool with test configuration
- *      3. Funds all test accounts with ETH
- *      4. Logs deployment summary with addresses
+ *      1. Uses existing Sepolia ProxyAdmin (not deploying new one)
+ *      2. Deploys Implementation and Proxy with CREATE2 for deterministic addresses
+ *      3. Initializes the pool with test configuration
+ *      4. Funds all test accounts with ETH
+ *      5. Logs deployment summary with addresses
  *
  * Usage:
  *   # Terminal 1: Start Anvil fork
@@ -42,33 +43,39 @@ contract Setup is Base {
         console.log("\n=== Setup: Deploy Pool on Anvil Fork ===\n");
         console.log("Deploying to:", anvilRpcUrl);
         console.log("OptimismPortal:", sepoliaOptimismPortal);
+        console.log("Existing ProxyAdmin:", sepoliaProxyAdmin);
         console.log("Initial Fee Rate:", testFeeRate, "bps");
 
         // Use Anvil's first default account as deployer/owner
         address deployer = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
         console.log("Deployer/Owner:", deployer);
 
+        // Use existing ProxyAdmin
+        ProxyAdmin proxyAdmin = ProxyAdmin(sepoliaProxyAdmin);
+        console.log("\n[1/6] Using existing ProxyAdmin");
+        console.log("ProxyAdmin address:", address(proxyAdmin));
+        console.log("ProxyAdmin owner:", proxyAdmin.owner());
+
+        // Deterministic salt for CREATE2
+        bytes32 salt = bytes32(uint256(1));
+        console.log("\n[2/6] Using CREATE2 salt:", vm.toString(salt));
+
         // Start broadcasting transactions
         vm.startBroadcast(deployer);
         console.log("Broadcasting from:", deployer);
 
-        // Step 1: Deploy ProxyAdmin
-        console.log("\n[1/7] Deploying ProxyAdmin...");
-        ProxyAdmin proxyAdmin = new ProxyAdmin(deployer);
-        console.log("ProxyAdmin deployed at:", address(proxyAdmin));
-
-        // Step 2: Deploy implementation
-        console.log("\n[2/7] Deploying WithdrawalLiquidityPool implementation...");
-        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool();
+        // Step 2: Deploy implementation with CREATE2
+        console.log("\n[3/6] Deploying WithdrawalLiquidityPool implementation with CREATE2...");
+        WithdrawalLiquidityPool implementation = new WithdrawalLiquidityPool{salt: salt}();
         console.log("Implementation deployed at:", address(implementation));
 
-        // Step 3: Deploy proxy with deployer as temporary admin
-        console.log("\n[3/7] Deploying Proxy...");
-        Proxy proxy = new Proxy(deployer);
+        // Step 3: Deploy proxy with CREATE2
+        console.log("\n[4/6] Deploying Proxy with CREATE2...");
+        Proxy proxy = new Proxy{salt: salt}(deployer);
         console.log("Proxy deployed at:", address(proxy));
 
         // Step 4: Encode initialization call
-        console.log("\n[4/7] Initializing proxy...");
+        console.log("\n[5/6] Initializing proxy...");
         bytes memory initData =
             abi.encodeCall(WithdrawalLiquidityPool.initialize, (deployer, sepoliaOptimismPortal, testFeeRate));
 
@@ -83,7 +90,7 @@ contract Setup is Base {
         vm.stopBroadcast();
 
         // Step 5: Fund test accounts (must be done outside broadcast)
-        console.log("\n[5/7] Funding test accounts...");
+        console.log("\n[6/6] Funding test accounts...");
         console.log("Addresses to fund:");
         console.log("  testOwner:", testOwner);
         console.log("  testLp1:", testLp1);
@@ -120,19 +127,17 @@ contract Setup is Base {
         // Wrap proxy in ABI for easier interaction
         WithdrawalLiquidityPool pool = WithdrawalLiquidityPool(payable(address(proxy)));
 
-        // Step 6: Transfer ownership to testOwner (if different from deployer)
+        // Step 6: Transfer pool ownership to testOwner (if different from deployer)
+        // Note: Not transferring ProxyAdmin ownership since we're using existing ProxyAdmin
         if (testOwner != deployer) {
-            console.log("\n[6/7] Transferring ownership...");
+            console.log("\n[Note] Transferring pool ownership only...");
             console.log("Transferring pool ownership to:", testOwner);
 
             vm.startBroadcast(deployer);
 
             pool.transferOwnership(testOwner);
             console.log("Pool ownership transferred");
-
-            console.log("Transferring ProxyAdmin ownership to:", testOwner);
-            proxyAdmin.transferOwnership(testOwner);
-            console.log("ProxyAdmin ownership transferred");
+            console.log("Note: ProxyAdmin ownership NOT transferred (using existing ProxyAdmin)");
 
             vm.stopBroadcast();
         }
@@ -165,9 +170,8 @@ contract Setup is Base {
         require(pool.owner() == testOwner, "VERIFICATION FAILED: Pool owner incorrect");
         console.log("[PASS] Pool owner is testOwner");
 
-        // Verify ProxyAdmin ownership
-        require(proxyAdmin.owner() == testOwner, "VERIFICATION FAILED: ProxyAdmin owner incorrect");
-        console.log("[PASS] ProxyAdmin owner is testOwner");
+        // Note: Skipping ProxyAdmin ownership check (using existing Sepolia ProxyAdmin)
+        console.log("[SKIP] ProxyAdmin ownership check (using existing ProxyAdmin)");
 
         // Verify pool configuration
         require(

@@ -33,6 +33,7 @@ contract Base is Script {
     // L1 Contract Addresses (real Sepolia contracts we're forking)
     address payable public sepoliaOptimismPortal;
     address public sepoliaDisputeGameFactory;
+    address public sepoliaProxyAdmin;
 
     // Test Accounts
     address public testOwner;
@@ -77,6 +78,7 @@ contract Base is Script {
         // Load L1 contract addresses
         sepoliaOptimismPortal = payable(vm.envAddress("SEPOLIA_OPTIMISM_PORTAL"));
         sepoliaDisputeGameFactory = vm.envAddress("SEPOLIA_DISPUTE_GAME_FACTORY");
+        sepoliaProxyAdmin = vm.envAddress("SEPOLIA_PROXY_ADMIN");
 
         // Load test accounts
         testOwner = vm.envAddress("TEST_OWNER");
