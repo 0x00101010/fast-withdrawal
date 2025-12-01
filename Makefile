@@ -42,6 +42,9 @@ help:
 	@echo "  make test-e2e              Run E2E withdrawal flow test"
 	@echo "  make test-verify-setup     Verify setup is correct (optional)"
 	@echo ""
+	@echo "L2 Withdrawal Commands:"
+	@echo "  make l2-withdraw           Initiate 2 test withdrawals from L2 to L1"
+	@echo ""
 
 ##
 # Dependency Management
@@ -309,3 +312,30 @@ test-verify-setup:
 	@echo "✅ Verifying setup..."
 	forge script script/test/1a_VerifySetup.s.sol:VerifySetup \
 		--rpc-url $(ANVIL_RPC_URL)
+
+##
+# L2 Withdrawals
+##
+.PHONY: l2-withdraw
+l2-withdraw:
+	@if [ ! -f .env.test ]; then \
+		echo "❌ .env.test not found. Copy .env.test.example to .env.test"; \
+		exit 1; \
+	fi
+	@if [ ! -f .env.test.secrets ]; then \
+		echo "❌ .env.test.secrets not found. Copy .env.test.secrets.example to .env.test.secrets"; \
+		exit 1; \
+	fi
+	@if [ -z "$(L2_RPC_URL)" ]; then \
+		echo "❌ L2_RPC_URL not set. Add it to .env.test"; \
+		exit 1; \
+	fi
+	@if [ -z "$(WITHDRAWAL_INITIATOR_PRIVATE_KEY)" ]; then \
+		echo "❌ WITHDRAWAL_INITIATOR_PRIVATE_KEY not set. Add it to .env.test.secrets"; \
+		exit 1; \
+	fi
+	@echo "🚀 Initiating withdrawals on L2..."
+	forge script script/helper/InitiateWithdrawals.s.sol:InitiateWithdrawals \
+		--rpc-url $(L2_RPC_URL) \
+		--broadcast \
+		--private-key $(WITHDRAWAL_INITIATOR_PRIVATE_KEY)
