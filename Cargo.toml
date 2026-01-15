@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = [
+    "bin/orchestrator",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.91.1"
+
+[workspace.lints.clippy]
+missing-const-for-fn = "warn"
+use-self = "warn"
+redundant-clone = "warn"
+option-if-let-else = "warn"
+undocumented_unsafe_blocks = "deny"
+
+[workspace.dependencies]
+
+[profile.release]
+overflow-checks = true
