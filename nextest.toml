@@ -1,0 +1,22 @@
+[test-groups]
+# Tests that take longer to run
+slow = { max-threads = "num-cpus" }
+
+# Integration tests
+integration = { max-threads = "num-cpus" }
+
+[profile.default]
+# By default, exclude slow and integration tests
+default-filter = 'not test(/(.*_slow_$|.*_integration_$)/)'
+
+[profile.slow]
+# Run only slow tests
+default-filter = 'test(/.*_slow_$/)'
+
+[profile.integration]
+# Run only integration tests
+default-filter = 'test(/.*_integration_$/)'
+
+[profile.all]
+# Run all tests
+default-filter = 'test(/.*/)'

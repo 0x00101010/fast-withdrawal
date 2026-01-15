@@ -1,0 +1,31 @@
+# Editor files
+*.swp
+*.vscode
+.idea
+
+# OS files
+*.DS_Store
+
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Fuzzing artifacts
+*/fuzz/artifacts
+*/fuzz/corpus
+*/fuzz/coverage
+*/fuzz/target
+
+# Example assets
+examples/*/assets
+
+# Temporary files
+*.tmp
+*.bak
+
+# Test artifacts
+*.profraw
+*.profdata
+
+# Documentation build
+docs/_build/

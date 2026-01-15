@@ -1,0 +1,6 @@
+# Import formatting
+imports_granularity = "Crate"
+group_imports = "One"
+
+# Format code in doc comments
+format_code_in_doc_comments = true

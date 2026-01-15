@@ -1,0 +1,90 @@
+# fast-withdrawal justfile
+# Common development tasks
+
+# Set default shell options
+set positional-arguments
+
+# Nightly version (override with NIGHTLY env var)
+nightly := env_var_or_default('NIGHTLY', 'nightly')
+
+# Aliases for common commands
+alias f := fix
+alias l := lint
+alias b := build
+alias t := test
+alias pr := pre-pr
+
+# Show available recipes
+default:
+    @just --list
+
+# Build the workspace
+build:
+    cargo build --workspace --all-targets
+
+# Build with release optimizations
+build-release:
+    cargo build --workspace --all-targets --release
+
+# Run the linter and formatter checks
+lint: check-fmt clippy check-docs
+
+# Run all tests
+test *args='':
+    cargo nextest run --workspace {{args}}
+
+# Fix all auto-fixable issues
+fix: fix-fmt clippy-fix
+
+# Check code formatting
+check-fmt:
+    cargo +{{nightly}} fmt --all --check
+
+# Fix code formatting
+fix-fmt:
+    cargo +{{nightly}} fmt --all
+
+# Run clippy with strict settings
+clippy:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# Apply clippy fixes
+clippy-fix:
+    cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged
+
+# Check documentation
+check-docs:
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
+
+# Test documentation examples
+test-docs:
+    cargo test --workspace --doc
+
+# Run benchmarks for a specific crate
+bench crate:
+    cargo bench -p {{crate}}
+
+# Check for unused dependencies
+udeps:
+    cargo +{{nightly}} udeps --workspace
+
+# Run pre-PR checks
+pre-pr: lint test
+
+# Clean build artifacts
+clean:
+    cargo clean
+
+# Update dependencies
+update:
+    cargo update
+
+# Run audit for security vulnerabilities
+audit:
+    cargo audit
+
+# Install development tools
+install-tools:
+    cargo install cargo-nextest
+    cargo install cargo-udeps --locked
+    cargo install cargo-audit
