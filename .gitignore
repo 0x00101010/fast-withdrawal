@@ -29,3 +29,6 @@ examples/*/assets
 
 # Documentation build
 docs/_build/
+
+# Planning documents (Claude Code)
+plans/
