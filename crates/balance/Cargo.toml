@@ -1,0 +1,28 @@
+[package]
+name = "balance-monitor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Internal dependencies
+client = { workspace = true }
+
+# Alloy for blockchain interaction
+alloy = { workspace = true, features = ["sol-types"] }
+alloy-provider = { workspace = true }
+alloy-sol-types = { workspace = true }
+alloy-contract = { workspace = true }
+alloy-primitives = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+
+[lints]
+workspace = true

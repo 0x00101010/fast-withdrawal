@@ -8,8 +8,9 @@ license.workspace = true
 workspace = true
 
 [dependencies]
-alloy.workspace = true
-tokio.workspace = true
+alloy = { workspace = true }
+alloy-provider = { workspace = true, features = ["reqwest", "reqwest-rustls-tls"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 async-trait.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

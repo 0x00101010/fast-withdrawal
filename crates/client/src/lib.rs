@@ -1,12 +1,8 @@
-use alloy::providers::{Provider, ProviderBuilder};
+use alloy_provider::{Provider, ProviderBuilder};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ClientError {
-    /// Error from the underlying Alloy provider
-    #[error("Provider error: {0}")]
-    Provider(#[from] alloy::transports::TransportError),
-
     /// Error parsing or validating URLs
     #[error("Invalid RPC URL: {0}")]
     InvalidUrl(String),
