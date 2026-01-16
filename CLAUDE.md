@@ -90,7 +90,7 @@ just pre-pr          # Runs lint + test
 
 ### Error Handling
 - Use `thiserror` for library error types
-- Use `anyhow::Result` for application code
+- Use `eyre::Result` for application code
 - Provide descriptive error messages
 
 ### Documentation
