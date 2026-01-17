@@ -17,7 +17,7 @@ pub enum ClientError {
 }
 
 /// Convenience function to create a ethereum rpc provider from url.
-pub async fn create_provider(rpc_url: &str) -> Result<impl Provider, ClientError> {
+pub async fn create_provider(rpc_url: &str) -> Result<impl Provider + Clone, ClientError> {
     let url = rpc_url
         .parse()
         .map_err(|e| ClientError::InvalidUrl(format!("{}", e)))?;

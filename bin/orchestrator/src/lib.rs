@@ -1,4 +1,4 @@
-mod config;
+pub mod config;
 
 use alloy_primitives::Address;
 use alloy_provider::Provider;

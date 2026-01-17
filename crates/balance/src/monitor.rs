@@ -35,8 +35,7 @@ impl<P> BalanceMonitor<P>
 where
     P: Provider + Clone,
 {
-    #[allow(dead_code)]
-    const fn new(provider: P) -> Self {
+    pub const fn new(provider: P) -> Self {
         Self { provider }
     }
 

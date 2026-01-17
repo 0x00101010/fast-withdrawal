@@ -1,0 +1,16 @@
+# Example test configuration for integration tests
+# Copy this to test-config.toml and update with real values
+
+# L1 RPC endpoint (Ethereum Sepolia)
+l1_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com"
+
+# L2 RPC endpoint (Base Sepolia or Optimism Sepolia)
+l2_rpc_url = "https://base-sepolia-rpc.publicnode.com"
+
+# L2 SpokePool contract address
+# Find current addresses at: https://docs.across.to/reference/contract-addresses
+l2_spoke_pool_address = "0x0000000000000000000000000000000000000000"
+
+# L1 EOA address to query native balance
+# Can be any address (your wallet, a known contract, etc.)
+l1_eoa_address = "0x0000000000000000000000000000000000000000"
