@@ -1,3 +1,1 @@
-fn main() {
-    println!("Orchestrator starting...");
-}
+const fn main() {}
