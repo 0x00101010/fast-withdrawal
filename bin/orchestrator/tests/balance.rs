@@ -21,9 +21,7 @@ fn load_test_config() -> Config {
     eprintln!("Current working directory: {:?}", current_dir);
     eprintln!("Looking for config at: {:?}", current_dir.join(config_path));
 
-    Config::from_file(config_path).expect(
-        "Failed to load tests/test-config.toml.",
-    )
+    Config::from_file(config_path).expect("Failed to load tests/test-config.toml.")
 }
 
 #[tokio::test]
