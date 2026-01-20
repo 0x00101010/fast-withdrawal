@@ -1,0 +1,22 @@
+[package]
+name = "config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Alloy primitives for addresses
+alloy-primitives = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+eyre = { workspace = true }
+
+# Config file parsing
+toml = { workspace = true }
+
+[lints]
+workspace = true
