@@ -9,7 +9,6 @@ license.workspace = true
 client = { workspace = true }
 
 # Alloy for blockchain interaction
-alloy = { workspace = true, features = ["sol-types"] }
 alloy-provider = { workspace = true }
 alloy-sol-types = { workspace = true }
 alloy-contract = { workspace = true }

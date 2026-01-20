@@ -17,9 +17,11 @@ balance = { workspace = true }
 action = { workspace = true }
 config = { workspace = true }
 
-alloy = { workspace = true }
 alloy-provider = { workspace = true }
 alloy-primitives = { workspace = true }
+alloy-signer = { workspace = true }
+alloy-signer-local = { workspace = true }
+alloy-network = { workspace = true }
 
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
 

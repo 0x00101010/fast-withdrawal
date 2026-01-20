@@ -6,7 +6,7 @@
 
 pub mod monitor;
 
-use alloy::primitives::{Address, U256};
+use alloy_primitives::{Address, U256};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use thiserror::Error;

@@ -32,3 +32,8 @@ docs/_build/
 
 # Planning documents (Claude Code)
 plans/
+
+# Private keys and sensitive test configuration
+**/test-config.local.toml
+**/.env.local
+*.keystore

@@ -16,7 +16,7 @@ use action::{
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_provider::Provider;
 use config::NetworkConfig;
-use setup::load_test_config;
+use setup::{load_test_config, setup_wallet_provider};
 
 /// Helper to create a test deposit config for Ethereum Sepolia -> Unichain Sepolia
 fn create_test_deposit_config(depositor: Address) -> DepositConfig {
@@ -27,11 +27,13 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
     let output_amount = U256::from(1_000_000); // 99% of input (1% fee estimate)
 
     // Set fill deadline to a future timestamp
+    // Note: fillDeadline must be within fillDeadlineBuffer (typically 2-4 hours)
+    // See: https://github.com/across-protocol/contracts/blob/main/contracts/SpokePool.sol
     let current_timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs() as u32;
-    let fill_deadline = current_timestamp + 86400; // 24 hours from now
+    let fill_deadline = current_timestamp + 7200; // 2 hours from now (conservative)
 
     DepositConfig {
         spoke_pool: network_config.ethereum.spoke_pool,
@@ -182,27 +184,58 @@ async fn test_deposit_action_is_completed() {
 }
 
 #[tokio::test]
-#[ignore = "requires real funds and submits actual transaction - run with: cargo test test_deposit_action_execute -- --ignored"]
+#[ignore = "requires real funds and submits actual transaction - run with: just test-ignored"]
 async fn test_deposit_action_execute() {
     let config = load_test_config();
-    let provider = setup_provider().await;
 
     println!("⚠️  WARNING: This test will execute a REAL deposit transaction!");
-    println!("Test Depositor: {}", config.eoa_address);
+    println!("Setting up wallet provider for transaction signing...");
+
+    // Use wallet provider instead of read-only provider
+    let provider = setup_wallet_provider().await;
+
+    println!("\nTest Depositor: {}", config.eoa_address);
     println!("Make sure the depositor has sufficient ETH for the deposit + gas");
 
     // Create deposit config
     let deposit_config = create_test_deposit_config(config.eoa_address);
 
-    println!("Deposit Details:");
+    println!("\nDeposit Details:");
     println!("  SpokePool: {}", deposit_config.spoke_pool);
+    println!("  Depositor: {}", deposit_config.depositor);
+    println!("  Recipient: {}", deposit_config.recipient);
+    println!("  Input Token: {}", deposit_config.input_token);
+    println!("  Output Token: {}", deposit_config.output_token);
     println!("  Input Amount: {} wei", deposit_config.input_amount);
     println!("  Output Amount: {} wei", deposit_config.output_amount);
     println!(
         "  Destination Chain: {}",
         deposit_config.destination_chain_id
     );
-    println!("  Fill Deadline: {}", deposit_config.fill_deadline);
+    println!(
+        "  Fill Deadline: {} (unix timestamp)",
+        deposit_config.fill_deadline
+    );
+    println!(
+        "  Exclusivity Parameter: {}",
+        deposit_config.exclusivity_parameter
+    );
+
+    // Get current timestamp for comparison
+    let current_timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+    println!(
+        "\nCurrent Timestamp: {} (unix timestamp)",
+        current_timestamp
+    );
+    println!(
+        "Time until deadline: {} seconds",
+        deposit_config
+            .fill_deadline
+            .saturating_sub(current_timestamp)
+    );
 
     // Create deposit action
     let action = DepositAction::new(provider, deposit_config);
@@ -211,10 +244,23 @@ async fn test_deposit_action_execute() {
     assert!(action.is_ready(), "Deposit action should be ready");
 
     // Execute the deposit
-    println!("Executing deposit...");
-    let result = action.execute().await.expect("Failed to execute deposit");
+    println!("\nExecuting deposit transaction...");
+    let result = match action.execute().await {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("\n❌ Failed to execute deposit:");
+            eprintln!("Error: {}", e);
+            eprintln!("\nError chain:");
+            for (i, cause) in e.chain().enumerate() {
+                eprintln!("  {}: {}", i, cause);
+            }
+            eprintln!("\nDebug representation:");
+            eprintln!("{:?}", e);
+            panic!("Deposit execution failed - see error details above");
+        }
+    };
 
-    println!("✓ Deposit executed successfully!");
+    println!("\n✓ Deposit executed successfully!");
     println!("  Transaction Hash: {:?}", result.tx_hash);
     println!("  Block Number: {:?}", result.block_number);
     println!("  Gas Used: {:?}", result.gas_used);
