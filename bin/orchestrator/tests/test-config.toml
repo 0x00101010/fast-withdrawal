@@ -5,12 +5,12 @@
 l1_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com"
 
 # L2 RPC endpoint (Base Sepolia or Optimism Sepolia)
-l2_rpc_url = "https://base-sepolia-rpc.publicnode.com"
+l2_rpc_url = "https://sepolia.unichain.org"
 
 # L2 SpokePool contract address
 # Find current addresses at: https://docs.across.to/reference/contract-addresses
-l2_spoke_pool_address = "0x0000000000000000000000000000000000000000"
+l2_spoke_pool_address = "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64"
 
 # L1 EOA address to query native balance
 # Can be any address (your wallet, a known contract, etc.)
-l1_eoa_address = "0x0000000000000000000000000000000000000000"
+l1_eoa_address = "0x5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"
