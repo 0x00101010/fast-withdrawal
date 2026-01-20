@@ -26,6 +26,10 @@ build:
 build-release:
     cargo build --workspace --all-targets --release
 
+# Run the orchestrator
+run *args='':
+    cargo run --bin orchestrator {{args}}
+
 # Run the linter and formatter checks
 lint: check-fmt clippy check-docs
 

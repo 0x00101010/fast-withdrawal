@@ -1,5 +1,5 @@
 use crate::{Balance, BalanceQuery, Monitor, MonitorError};
-use alloy_primitives::{address, Address};
+use alloy_primitives::Address;
 use alloy_provider::Provider;
 use alloy_sol_types::sol;
 use tracing::debug;
@@ -23,8 +23,6 @@ sol! {
        function balanceOf(address account) external view returns (uint256);
    }
 }
-
-const ETH_TOKEN_ADDRESS: Address = address!("0000000000000000000000000000000000000000");
 
 // Balance monitor implementation.
 pub struct BalanceMonitor<P> {
@@ -76,7 +74,7 @@ where
 
         Ok(Balance {
             holder: address,
-            asset: ETH_TOKEN_ADDRESS,
+            asset: Address::ZERO,
             amount: balance,
         })
     }

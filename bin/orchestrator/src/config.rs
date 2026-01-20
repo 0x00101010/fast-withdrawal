@@ -14,8 +14,8 @@ pub struct Config {
     /// L2 spoke pool address
     pub l2_spoke_pool_address: Address,
 
-    /// L1 EOA address
-    pub l1_eoa_address: Address,
+    /// EOA address
+    pub eoa_address: Address,
 }
 
 impl Config {
