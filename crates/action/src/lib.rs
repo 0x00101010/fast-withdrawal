@@ -1,3 +1,5 @@
+pub mod deposit;
+
 use alloy_primitives::{TxHash, U256};
 use std::future::Future;
 

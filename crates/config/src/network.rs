@@ -187,7 +187,7 @@ mod tests {
     fn test_mainnet_config() {
         let config = NetworkConfig::mainnet();
         assert_eq!(config.ethereum.chain_id, 1);
-        assert_eq!(config.unichain.chain_id, 1301);
+        assert_eq!(config.unichain.chain_id, 130);
         assert_eq!(config.network_type, NetworkType::Mainnet);
     }
 
