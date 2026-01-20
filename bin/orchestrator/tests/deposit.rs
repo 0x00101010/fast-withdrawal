@@ -26,15 +26,6 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
     let input_amount = U256::from(1_000_000); // 1M wei = 0.000001 ETH (very small amount)
     let output_amount = U256::from(1_000_000); // 99% of input (1% fee estimate)
 
-    // Set fill deadline to a future timestamp
-    // Note: fillDeadline must be within fillDeadlineBuffer (typically 2-4 hours)
-    // See: https://github.com/across-protocol/contracts/blob/main/contracts/SpokePool.sol
-    let current_timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as u32;
-    let fill_deadline = current_timestamp + 7200; // 2 hours from now (conservative)
-
     DepositConfig {
         spoke_pool: network_config.ethereum.spoke_pool,
         depositor,
@@ -45,7 +36,7 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
         output_amount,
         destination_chain_id: network_config.unichain.chain_id,
         exclusive_relayer: Address::ZERO, // No exclusive relayer
-        fill_deadline,
+        fill_deadline: 0, // explicitly request slow fill
         exclusivity_parameter: 0, // No exclusivity period
         message: Bytes::new(),
     }
