@@ -37,6 +37,10 @@ lint: check-fmt clippy check-docs
 test *args='':
     cargo nextest run --workspace {{args}}
 
+# Run only ignored tests (e.g., live tests that require funds)
+test-ignored *args='':
+    cargo nextest run --workspace --run-ignored ignored-only {{args}}
+
 # Fix all auto-fixable issues
 fix: fix-fmt clippy-fix
 

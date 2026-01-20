@@ -90,16 +90,12 @@ where
         Self { provider, config }
     }
 
-    /// Get the current block timestamp.
-    async fn get_current_timestamp(&self) -> eyre::Result<u32> {
-        let block_number = self.provider.get_block_number().await?;
-        let block = self
-            .provider
-            .get_block_by_number(block_number.into())
-            .await?
-            .ok_or_else(|| eyre::eyre!("Block not found"))?;
-
-        Ok(block.header.timestamp as u32)
+    /// Get the current timestamp (wall clock time).
+    fn get_current_timestamp(&self) -> u32 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs() as u32
     }
 
     /// Validate the deposit configuration.
@@ -151,7 +147,7 @@ where
         }
 
         // Get current timestamp for quote
-        let quote_timestamp = self.get_current_timestamp().await?;
+        let quote_timestamp = self.get_current_timestamp();
 
         // Create contract instance
         let contract = ISpokePool::new(self.config.spoke_pool, &self.provider);

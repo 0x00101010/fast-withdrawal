@@ -23,8 +23,10 @@ undocumented_unsafe_blocks = "deny"
 
 [workspace.dependencies]
 # Internal crates
-client = { path = "crates/client" }
+action = { path = "crates/action" }
 balance = { path = "crates/balance" }
+client = { path = "crates/client" }
+config = { path = "crates/config" }
 orchestrator = { path = "bin/orchestrator" }
 
 # Ethereum

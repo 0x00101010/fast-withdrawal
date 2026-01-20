@@ -8,21 +8,13 @@
 //! cargo test --package orchestrator --test integration_test
 //! ```
 
+#[path = "setup.rs"]
+mod setup;
+
 use alloy_primitives::Address;
 use balance::monitor::BalanceMonitor;
-use orchestrator::{check_l1_native_balance, check_l2_spoke_pool_balance, config::Config};
-
-/// Load test configuration. Panics if not found or invalid.
-fn load_test_config() -> Config {
-    let config_path = "tests/test-config.toml";
-
-    // Debug: print current directory
-    let current_dir = std::env::current_dir().unwrap();
-    eprintln!("Current working directory: {:?}", current_dir);
-    eprintln!("Looking for config at: {:?}", current_dir.join(config_path));
-
-    Config::from_file(config_path).expect("Failed to load tests/test-config.toml.")
-}
+use orchestrator::{check_l1_native_balance, check_l2_spoke_pool_balance};
+use setup::load_test_config;
 
 #[tokio::test]
 async fn test_l1_native_balance_query() {
