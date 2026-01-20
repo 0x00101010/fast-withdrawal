@@ -2,8 +2,9 @@
 resolver = "2"
 members = [
     "bin/orchestrator",
-    "crates/client",
+    "crates/action",
     "crates/balance",
+    "crates/client",
 ]
 
 [workspace.package]
