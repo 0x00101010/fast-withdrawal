@@ -53,6 +53,13 @@ pub fn load_private_key() -> Option<String> {
     None
 }
 
+/// Common test setup: load config and create provider
+pub async fn setup_provider(url: &str) -> impl Provider + Clone {
+    client::create_provider(url)
+        .await
+        .expect("Failed to create L1 provider")
+}
+
 /// Create a wallet provider for signing transactions.
 ///
 /// Requires a private key from either:

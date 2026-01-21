@@ -14,9 +14,8 @@ use action::{
     Action,
 };
 use alloy_primitives::{Address, Bytes, U256};
-use alloy_provider::Provider;
 use config::NetworkConfig;
-use setup::{load_test_config, setup_wallet_provider};
+use setup::{load_test_config, setup_provider, setup_wallet_provider};
 
 /// Helper to create a test deposit config for Ethereum Sepolia -> Unichain Sepolia
 fn create_test_deposit_config(depositor: Address) -> DepositConfig {
@@ -42,15 +41,6 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
     }
 }
 
-/// Common test setup: load config and create provider
-async fn setup_provider() -> impl Provider + Clone {
-    let config = load_test_config();
-
-    client::create_provider(&config.l1_rpc_url)
-        .await
-        .expect("Failed to create L1 provider")
-}
-
 #[tokio::test]
 async fn test_deposit_action_creation() {
     let config = load_test_config();
@@ -62,7 +52,7 @@ async fn test_deposit_action_creation() {
     println!("Destination Chain ID: {}", network_config.unichain.chain_id);
     println!("Test Depositor: {}", config.eoa_address);
 
-    let provider = setup_provider().await;
+    let provider = setup_provider(&config.l1_rpc_url).await;
 
     // Create deposit config
     let deposit_config = create_test_deposit_config(config.eoa_address);
@@ -81,7 +71,7 @@ async fn test_deposit_action_creation() {
 #[tokio::test]
 async fn test_deposit_action_validation() {
     let config = load_test_config();
-    let provider = setup_provider().await;
+    let provider = setup_provider(&config.l1_rpc_url).await;
 
     println!("Testing deposit action validation");
 
@@ -129,7 +119,7 @@ async fn test_deposit_action_validation() {
 #[tokio::test]
 async fn test_deposit_action_description() {
     let config = load_test_config();
-    let provider = setup_provider().await;
+    let provider = setup_provider(&config.l1_rpc_url).await;
 
     println!("Testing deposit action description");
 
@@ -152,7 +142,7 @@ async fn test_deposit_action_description() {
 #[tokio::test]
 async fn test_deposit_action_is_completed() {
     let config = load_test_config();
-    let provider = setup_provider().await;
+    let provider = setup_provider(&config.l1_rpc_url).await;
 
     println!("Testing deposit action is_completed check");
 
