@@ -11,8 +11,8 @@
 #[path = "setup.rs"]
 mod setup;
 
-use alloy_primitives::Address;
-use balance::monitor::BalanceMonitor;
+use alloy_primitives::{Address, U256};
+use balance::{monitor::BalanceMonitor, Monitor};
 use orchestrator::{check_l1_native_balance, check_l2_spoke_pool_balance};
 use setup::load_test_config;
 
@@ -128,4 +128,48 @@ async fn test_both_chains_integration() {
     // Both queries should succeed
     assert_eq!(l1_result.holder, config.eoa_address);
     assert_eq!(l2_result.holder, config.eoa_address);
+}
+
+#[tokio::test]
+async fn test_l2_spoke_pool_weth_balance() {
+    let config = load_test_config();
+
+    // Unichain Sepolia WETH address (OP Stack predeploy)
+    let weth_address = config::network::UnichainConfig::sepolia().weth;
+
+    println!("Testing L2 SpokePool total WETH balance query");
+    println!("L2 RPC: {}", config.l2_rpc_url);
+    println!("SpokePool: {}", config.l2_spoke_pool_address);
+    println!("WETH Token: {}", weth_address);
+
+    // Create provider and monitor
+    let provider = client::create_provider(&config.l2_rpc_url)
+        .await
+        .expect("Failed to create L2 provider");
+
+    let monitor = BalanceMonitor::new(provider);
+
+    // Query the SpokePool's total WETH balance (not relayer refund, but actual token holdings)
+    use balance::BalanceQuery;
+    let result = monitor
+        .query_balance(BalanceQuery::ERC20Balance {
+            token: weth_address,
+            holder: config.l2_spoke_pool_address,
+        })
+        .await
+        .expect("Failed to query SpokePool WETH balance");
+
+    println!("✓ L2 SpokePool Total WETH Balance:");
+    println!("  SpokePool Contract: {}", result.holder);
+    println!("  WETH Token: {}", result.asset);
+    println!("  Balance: {} wei", result.amount);
+
+    // Convert to human-readable format
+    let balance_eth = alloy_primitives::utils::format_ether(result.amount);
+    println!("  Balance (ETH): {} WETH", balance_eth);
+
+    // Assertions
+    assert_eq!(result.holder, config.l2_spoke_pool_address);
+    assert_eq!(result.asset, weth_address);
+    assert!(result.amount > U256::ZERO);
 }
