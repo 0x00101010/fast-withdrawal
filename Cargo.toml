@@ -6,6 +6,7 @@ members = [
     "crates/balance",
     "crates/client",
     "crates/config",
+    "crates/withdrawal",
 ]
 
 [workspace.package]
@@ -27,7 +28,7 @@ action = { path = "crates/action" }
 balance = { path = "crates/balance" }
 client = { path = "crates/client" }
 config = { path = "crates/config" }
-orchestrator = { path = "bin/orchestrator" }
+withdrawal = { path = "crates/withdrawal" }
 
 # Ethereum
 alloy-provider = { version = "1.4.3", default-features = false }
