@@ -1,13 +1,15 @@
 #[path = "setup.rs"]
 mod setup;
 
-use alloy_primitives::{Address, U256};
-use action::Action;
-use action::claim::{Claim, ClaimAction};
+use action::{
+    claim::{Claim, ClaimAction},
+    Action,
+};
+use alloy_primitives::Address;
 use config::NetworkConfig;
 use setup::{load_test_config, setup_provider};
 
-fn create_claim(relayer: Address) -> Claim {
+const fn create_claim(relayer: Address) -> Claim {
     let network_config = NetworkConfig::sepolia();
 
     Claim {
@@ -47,7 +49,10 @@ async fn test_get_claimable_balance() -> eyre::Result<()> {
 
     println!("✓ Successfully retrieved claimable balance");
     println!("Claimable balance: {} wei", result);
-    println!("Claimable balance: {} ETH", alloy_primitives::utils::format_ether(result));
+    println!(
+        "Claimable balance: {} ETH",
+        alloy_primitives::utils::format_ether(result)
+    );
 
     Ok(())
 }
