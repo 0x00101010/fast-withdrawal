@@ -78,6 +78,23 @@ where
             amount: balance,
         })
     }
+
+    async fn query_erc20(&self, token: Address, holder: Address) -> Result<Balance, MonitorError> {
+        debug!("Querying erc20 {} balance: address={}", token, holder);
+
+        let contract = IERC20::new(token, &self.provider);
+        let balance = contract
+            .balanceOf(holder)
+            .call()
+            .await
+            .map_err(|e| MonitorError::Provider(format!("query balance failed: {}", e)))?;
+        
+        Ok(Balance {
+            holder,
+            asset: token,
+            amount: balance,
+        })
+    }
 }
 
 impl<P> Monitor for BalanceMonitor<P>
