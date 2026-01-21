@@ -1,3 +1,4 @@
+pub mod claim;
 pub mod deposit;
 
 use alloy_primitives::{TxHash, U256};
@@ -32,4 +33,19 @@ pub struct Result {
     pub block_number: Option<u64>,
     /// Gas used
     pub gas_used: Option<U256>,
+}
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use alloy_provider::{network::Ethereum, Provider, RootProvider};
+
+    /// Mock provider for unit tests.
+    #[derive(Clone)]
+    pub struct MockProvider;
+
+    impl Provider for MockProvider {
+        fn root(&self) -> &RootProvider<Ethereum> {
+            todo!()
+        }
+    }
 }

@@ -200,19 +200,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Action;
-    use alloy_contract::private::Ethereum;
-    use alloy_provider::RootProvider;
-
-    // Mock provider that doesn't do anything
-    #[derive(Clone)]
-    struct MockProvider;
-
-    impl Provider for MockProvider {
-        fn root(&self) -> &RootProvider<Ethereum> {
-            todo!()
-        }
-    }
+    use crate::{test_utils::MockProvider, Action};
 
     fn mock_config() -> DepositConfig {
         DepositConfig {
