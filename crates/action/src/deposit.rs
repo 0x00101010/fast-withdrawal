@@ -124,12 +124,12 @@ impl<P> crate::Action for DepositAction<P>
 where
     P: Provider + Clone + Send + Sync,
 {
-    fn is_ready(&self) -> bool {
+    async fn is_ready(&self) -> eyre::Result<bool> {
         // Basic validation - can be executed synchronously
-        self.config.spoke_pool != Address::ZERO
+        Ok(self.config.spoke_pool != Address::ZERO
             && self.config.recipient != Address::ZERO
             && self.config.input_amount > U256::ZERO
-            && self.config.output_amount <= self.config.input_amount
+            && self.config.output_amount <= self.config.input_amount)
     }
 
     async fn is_completed(&self) -> eyre::Result<bool> {
@@ -142,7 +142,7 @@ where
         // Validate before executing
         self.validate_config()?;
 
-        if !self.is_ready() {
+        if !self.is_ready().await? {
             eyre::bail!("Deposit not ready");
         }
 
@@ -219,19 +219,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_is_ready_with_valid_config() {
+    #[tokio::test]
+    async fn test_is_ready_with_valid_config() {
         let config = mock_config();
         let action = DepositAction {
             provider: MockProvider {},
             config,
         };
 
-        assert!(action.is_ready());
+        assert!(action.is_ready().await.unwrap());
     }
 
-    #[test]
-    fn test_is_ready_with_zero_spoke_pool() {
+    #[tokio::test]
+    async fn test_is_ready_with_zero_spoke_pool() {
         let mut config = mock_config();
         config.spoke_pool = Address::ZERO;
         let action = DepositAction {
@@ -239,11 +239,11 @@ mod tests {
             config,
         };
 
-        assert!(!action.is_ready());
+        assert!(!action.is_ready().await.unwrap());
     }
 
-    #[test]
-    fn test_is_ready_with_zero_recipient() {
+    #[tokio::test]
+    async fn test_is_ready_with_zero_recipient() {
         let mut config = mock_config();
         config.recipient = Address::ZERO;
         let action = DepositAction {
@@ -251,11 +251,11 @@ mod tests {
             config,
         };
 
-        assert!(!action.is_ready());
+        assert!(!action.is_ready().await.unwrap());
     }
 
-    #[test]
-    fn test_is_ready_with_zero_amount() {
+    #[tokio::test]
+    async fn test_is_ready_with_zero_amount() {
         let mut config = mock_config();
         config.input_amount = U256::ZERO;
         let action = DepositAction {
@@ -263,11 +263,11 @@ mod tests {
             config,
         };
 
-        assert!(!action.is_ready());
+        assert!(!action.is_ready().await.unwrap());
     }
 
-    #[test]
-    fn test_is_ready_with_output_exceeds_input() {
+    #[tokio::test]
+    async fn test_is_ready_with_output_exceeds_input() {
         let mut config = mock_config();
         config.input_amount = U256::from(100);
         config.output_amount = U256::from(200);
@@ -276,7 +276,7 @@ mod tests {
             config,
         };
 
-        assert!(!action.is_ready());
+        assert!(!action.is_ready().await.unwrap());
     }
 
     #[test]

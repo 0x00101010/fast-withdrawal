@@ -40,7 +40,10 @@ async fn test_get_claimable_balance() -> eyre::Result<()> {
 
     // Verify action is ready
     println!("Checking if action is ready...");
-    assert!(action.is_ready(), "Claim action should be ready");
+    assert!(
+        action.is_ready().await.expect("Failed to check is_ready"),
+        "Claim action should be ready"
+    );
     println!("✓ Action is ready");
 
     // Get claimable balance

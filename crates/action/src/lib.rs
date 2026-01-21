@@ -1,5 +1,6 @@
 pub mod claim;
 pub mod deposit;
+mod withdraw;
 
 use alloy_primitives::{TxHash, U256};
 use std::future::Future;
@@ -9,7 +10,7 @@ pub trait Action: Send + Sync {
     /// Check to see if the action is ready to be executed.
     ///
     /// Returns true if all predictions are met.
-    fn is_ready(&self) -> bool;
+    fn is_ready(&self) -> impl Future<Output = eyre::Result<bool>> + Send;
 
     /// Check if the action has already been completed.
     ///

@@ -61,7 +61,7 @@ async fn test_deposit_action_creation() {
     let action = DepositAction::new(provider, deposit_config);
 
     // Test is_ready
-    let is_ready = action.is_ready();
+    let is_ready = action.is_ready().await.expect("Failed to check is_ready");
     println!("✓ Deposit action created");
     println!("  Is ready: {}", is_ready);
 
@@ -81,7 +81,7 @@ async fn test_deposit_action_validation() {
 
     let action = DepositAction::new(provider.clone(), invalid_config);
     assert!(
-        !action.is_ready(),
+        !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready with zero spoke pool"
     );
 
@@ -91,7 +91,7 @@ async fn test_deposit_action_validation() {
 
     let action = DepositAction::new(provider.clone(), invalid_config);
     assert!(
-        !action.is_ready(),
+        !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready with zero recipient"
     );
 
@@ -100,7 +100,10 @@ async fn test_deposit_action_validation() {
     invalid_config.input_amount = U256::ZERO;
 
     let action = DepositAction::new(provider.clone(), invalid_config);
-    assert!(!action.is_ready(), "Should not be ready with zero amount");
+    assert!(
+        !action.is_ready().await.expect("Failed to check is_ready"),
+        "Should not be ready with zero amount"
+    );
 
     // Test invalid config: output > input
     let mut invalid_config = create_test_deposit_config(config.eoa_address);
@@ -109,7 +112,7 @@ async fn test_deposit_action_validation() {
 
     let action = DepositAction::new(provider, invalid_config);
     assert!(
-        !action.is_ready(),
+        !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready when output exceeds input"
     );
 
@@ -222,7 +225,10 @@ async fn test_deposit_action_execute() {
     let action = DepositAction::new(provider, deposit_config);
 
     // Verify action is ready
-    assert!(action.is_ready(), "Deposit action should be ready");
+    assert!(
+        action.is_ready().await.expect("Failed to check is_ready"),
+        "Deposit action should be ready"
+    );
 
     // Execute the deposit
     println!("\nExecuting deposit transaction...");

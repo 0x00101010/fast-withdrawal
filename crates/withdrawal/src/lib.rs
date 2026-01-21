@@ -1,3 +1,3 @@
-pub mod types;
-pub mod hash;
 pub mod contract;
+pub mod hash;
+pub mod types;

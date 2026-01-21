@@ -77,9 +77,9 @@ impl<P> crate::Action for ClaimAction<P>
 where
     P: Provider + Clone,
 {
-    fn is_ready(&self) -> bool {
+    async fn is_ready(&self) -> eyre::Result<bool> {
         // TODO: check against strategy
-        true
+        Ok(true)
     }
 
     async fn is_completed(&self) -> eyre::Result<bool> {
@@ -92,7 +92,7 @@ where
     async fn execute(&self) -> eyre::Result<crate::Result> {
         self.validate_claim()?;
 
-        if !self.is_ready() {
+        if !self.is_ready().await? {
             eyre::bail!("Claim not ready");
         }
 
@@ -201,8 +201,8 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Relayer"));
     }
 
-    #[test]
-    fn test_is_ready() {
+    #[tokio::test]
+    async fn test_is_ready() {
         let claim = Claim {
             spoke_pool: Address::repeat_byte(1),
             token: Address::repeat_byte(2),
@@ -212,7 +212,7 @@ mod tests {
 
         let action = ClaimAction::new(MockProvider, claim);
         // Currently always returns true (TODO in implementation)
-        assert!(action.is_ready());
+        assert!(action.is_ready().await.unwrap());
     }
 
     #[test]

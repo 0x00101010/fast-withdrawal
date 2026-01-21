@@ -1,7 +1,6 @@
+use crate::{contract::WithdrawalTransaction, types::WithdrawalHash};
 use alloy_primitives::keccak256;
 use alloy_sol_types::SolValue;
-use crate::contract::WithdrawalTransaction;
-use crate::types::WithdrawalHash;
 
 pub fn compute_withdrawal_hash(tx: &WithdrawalTransaction) -> WithdrawalHash {
     // Solidity's Hashing.hashWithdrawal uses:
@@ -13,15 +12,16 @@ pub fn compute_withdrawal_hash(tx: &WithdrawalTransaction) -> WithdrawalHash {
         &tx.target,
         &tx.value,
         &tx.gasLimit,
-        &tx.data
-    ).abi_encode_sequence();
+        &tx.data,
+    )
+        .abi_encode_sequence();
     keccak256(encoded)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{Address, Bytes, U256, B256, hex};
+    use alloy_primitives::{hex, Address, Bytes, B256, U256};
 
     #[test]
     fn test_compute_withdrawal_hash_deterministic() {
@@ -70,9 +70,9 @@ mod tests {
         let hash = compute_withdrawal_hash(&tx);
 
         // Expected hash from the MessagePassed event on chain
-        let expected = B256::from_slice(
-            &hex!("49c43b60ec99e99046b54aec4c90419ff194300e567de63423c3b974ae46bd28")
-        );
+        let expected = B256::from_slice(&hex!(
+            "49c43b60ec99e99046b54aec4c90419ff194300e567de63423c3b974ae46bd28"
+        ));
 
         assert_eq!(hash, expected, "Hash mismatch!");
     }
