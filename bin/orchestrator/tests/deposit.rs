@@ -36,8 +36,8 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
         output_amount,
         destination_chain_id: network_config.unichain.chain_id,
         exclusive_relayer: Address::ZERO, // No exclusive relayer
-        fill_deadline: 0, // explicitly request slow fill
-        exclusivity_parameter: 0, // No exclusivity period
+        fill_deadline: 0,                 // explicitly request slow fill
+        exclusivity_parameter: 0,         // No exclusivity period
         message: Bytes::new(),
     }
 }

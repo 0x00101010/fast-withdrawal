@@ -15,7 +15,7 @@ alloy-contract = { workspace = true }
 alloy-primitives = { workspace = true }
 
 # Error handling
-thiserror = { workspace = true }
+eyre = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
