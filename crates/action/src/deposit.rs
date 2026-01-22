@@ -112,8 +112,8 @@ where
             eyre::bail!("Input amount is zero");
         }
 
-        if self.config.output_amount > self.config.input_amount {
-            eyre::bail!("Output amount exceeds input amount");
+        if self.config.output_amount < self.config.input_amount {
+            eyre::bail!("Output amount smaller than input amount");
         }
 
         Ok(())
@@ -129,7 +129,7 @@ where
         Ok(self.config.spoke_pool != Address::ZERO
             && self.config.recipient != Address::ZERO
             && self.config.input_amount > U256::ZERO
-            && self.config.output_amount <= self.config.input_amount)
+            && self.config.output_amount >= self.config.input_amount)
     }
 
     async fn is_completed(&self) -> eyre::Result<bool> {
@@ -210,7 +210,7 @@ mod tests {
             input_token: Address::from([4u8; 20]),
             output_token: Address::from([5u8; 20]),
             input_amount: U256::from(1_000_000),
-            output_amount: U256::from(990_000),
+            output_amount: U256::from(2_000_000),
             destination_chain_id: 130,
             exclusive_relayer: Address::ZERO,
             fill_deadline: 1234567890,
@@ -276,7 +276,7 @@ mod tests {
             config,
         };
 
-        assert!(!action.is_ready().await.unwrap());
+        assert!(action.is_ready().await.unwrap());
     }
 
     #[test]
@@ -343,11 +343,21 @@ mod tests {
         };
 
         let result = action.validate_config();
+        assert!(!result.is_err());
+    }
+
+    #[test]
+    fn test_validate_config_output_smaller_than_input() {
+        let mut config = mock_config();
+        config.input_amount = U256::from(100);
+        config.output_amount = U256::from(90);
+        let action = DepositAction {
+            provider: MockProvider {},
+            config,
+        };
+
+        let result = action.validate_config();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Output amount exceeds"));
     }
 
     #[test]
@@ -373,6 +383,6 @@ mod tests {
         assert_ne!(config.recipient, Address::ZERO);
         assert!(config.input_amount > U256::ZERO);
         assert!(config.output_amount > U256::ZERO);
-        assert!(config.output_amount <= config.input_amount);
+        assert!(config.output_amount >= config.input_amount);
     }
 }

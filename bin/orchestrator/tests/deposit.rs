@@ -23,19 +23,27 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
 
     // Use small amounts for testing
     let input_amount = U256::from(1_000_000); // 1M wei = 0.000001 ETH (very small amount)
-    let output_amount = U256::from(1_000_000); // 99% of input (1% fee estimate)
+    let output_amount = U256::from(2_000_000); // Make it higher than input amount which will guarantee slow fill.
+
+    // Calculate fill_deadline as now + 2 hours
+    let two_hours_in_seconds = 2 * 60 * 60; // 7200 seconds
+    let current_timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs() as u32;
+    let fill_deadline = current_timestamp + two_hours_in_seconds;
 
     DepositConfig {
         spoke_pool: network_config.ethereum.spoke_pool,
         depositor,
-        recipient: depositor,                       // Send to self for testing
+        recipient: depositor,
         input_token: network_config.ethereum.weth,  // WETH on Ethereum
         output_token: network_config.unichain.weth, // WETH on Unichain
         input_amount,
         output_amount,
         destination_chain_id: network_config.unichain.chain_id,
         exclusive_relayer: Address::ZERO, // No exclusive relayer
-        fill_deadline: 0,                 // explicitly request slow fill
+        fill_deadline,
         exclusivity_parameter: 0,         // No exclusivity period
         message: Bytes::new(),
     }
@@ -108,7 +116,7 @@ async fn test_deposit_action_validation() {
     // Test invalid config: output > input
     let mut invalid_config = create_test_deposit_config(config.eoa_address);
     invalid_config.input_amount = U256::from(100);
-    invalid_config.output_amount = U256::from(200);
+    invalid_config.output_amount = U256::from(90);
 
     let action = DepositAction::new(provider, invalid_config);
     assert!(
