@@ -1,0 +1,13 @@
+[package]
+name = "binding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+alloy-sol-types = { workspace = true }
+alloy-primitives = { workspace = true }
+alloy-contract = { workspace = true }
+
+[lints]
+workspace = true

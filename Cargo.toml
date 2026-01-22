@@ -4,6 +4,7 @@ members = [
     "bin/orchestrator",
     "crates/action",
     "crates/balance",
+    "crates/binding",
     "crates/client",
     "crates/config",
     "crates/withdrawal",
@@ -26,6 +27,7 @@ undocumented_unsafe_blocks = "deny"
 # Internal crates
 action = { path = "crates/action" }
 balance = { path = "crates/balance" }
+binding = { path = "crates/binding" }
 client = { path = "crates/client" }
 config = { path = "crates/config" }
 withdrawal = { path = "crates/withdrawal" }

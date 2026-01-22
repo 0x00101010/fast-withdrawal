@@ -15,7 +15,6 @@ sol! {
 
         // we don't need to do this `claimRelayerRefund`, this is for failure cases
         // on the data worker cycle, we'll automatically get the tokens
-        
     }
 }
 
