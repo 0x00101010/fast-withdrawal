@@ -89,7 +89,7 @@ where
         Ok(true)
     }
 
-    async fn execute(&self) -> eyre::Result<crate::Result> {
+    async fn execute(&mut self) -> eyre::Result<crate::Result> {
         self.validate_claim()?;
 
         if !self.is_ready().await? {

@@ -102,7 +102,7 @@ where
         Ok(true)
     }
 
-    async fn execute(&self) -> eyre::Result<crate::Result> {
+    async fn execute(&mut self) -> eyre::Result<crate::Result> {
         if self.is_completed().await? {
             eyre::bail!("Withdrawal already initiated")
         }
@@ -130,6 +130,8 @@ where
             withdrawal_tx = ?withdrawal_tx,
             "Withdrawal initiated."
         );
+
+        self.action.tx_hash = Some(receipt.transaction_hash);
 
         Ok(crate::Result {
             tx_hash: receipt.transaction_hash,

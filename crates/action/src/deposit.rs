@@ -138,7 +138,7 @@ where
         Ok(false)
     }
 
-    async fn execute(&self) -> eyre::Result<crate::Result> {
+    async fn execute(&mut self) -> eyre::Result<crate::Result> {
         // Validate before executing
         self.validate_config()?;
 

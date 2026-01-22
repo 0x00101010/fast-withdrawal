@@ -179,7 +179,7 @@ async fn test_withdraw_action_execute() {
     println!("  Data: {} bytes", withdraw.data.len());
 
     // Create withdrawal action
-    let action = WithdrawAction::new(provider, withdraw);
+    let mut action = WithdrawAction::new(provider, withdraw);
 
     // Verify action is ready
     let is_ready = action.is_ready().await.expect("Failed to check is_ready");

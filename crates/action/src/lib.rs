@@ -20,7 +20,7 @@ pub trait Action: Send + Sync {
     /// Execute the action.
     ///
     /// Returns the transaction hash of the executed action.
-    fn execute(&self) -> impl Future<Output = eyre::Result<Result>> + Send;
+    fn execute(&mut self) -> impl Future<Output = eyre::Result<Result>> + Send;
 
     /// Get a human-readable description of this action.
     fn description(&self) -> String;

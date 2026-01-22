@@ -222,7 +222,7 @@ async fn test_deposit_action_execute() {
     );
 
     // Create deposit action
-    let action = DepositAction::new(provider, deposit_config);
+    let mut action = DepositAction::new(provider, deposit_config);
 
     // Verify action is ready
     assert!(
