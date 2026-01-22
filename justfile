@@ -37,9 +37,21 @@ lint: check-fmt clippy check-docs
 test *args='':
     cargo nextest run --workspace {{args}}
 
-# Run only ignored tests (e.g., live tests that require funds)
-test-ignored *args='':
-    cargo nextest run --workspace --run-ignored ignored-only {{args}}
+# Run deposit integration test (requires funds)
+run-deposit:
+    cargo nextest run --package orchestrator --test deposit --run-ignored ignored-only test_deposit_action_execute
+
+# Run withdrawal initiation test (requires funds)
+run-withdraw:
+    cargo nextest run --package orchestrator --test withdraw --run-ignored ignored-only test_withdraw_action_execute
+
+# Run withdrawal prove test (requires funds and initiated withdrawal)
+run-prove:
+    cargo nextest run --package orchestrator --test withdraw --run-ignored ignored-only test_prove_withdrawal
+
+# Run withdrawal finalize test (requires funds and proven withdrawal after 7 days)
+run-finalize:
+    cargo nextest run --package orchestrator --test withdraw --run-ignored ignored-only test_finalize_withdrawal
 
 # Fix all auto-fixable issues
 fix: fix-fmt clippy-fix

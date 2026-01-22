@@ -176,7 +176,7 @@ async fn test_deposit_action_execute() {
     println!("Setting up wallet provider for transaction signing...");
 
     // Use wallet provider instead of read-only provider
-    let provider = setup_wallet_provider().await;
+    let provider = setup_wallet_provider(&config.l1_rpc_url).await;
 
     println!("\nTest Depositor: {}", config.eoa_address);
     println!("Make sure the depositor has sufficient ETH for the deposit + gas");

@@ -1,5 +1,5 @@
 use crate::Action;
-use alloy_primitives::{utils::format_ether, Address, Bytes, U256};
+use alloy_primitives::{utils::format_ether, Address, Bytes, B256, U256};
 use alloy_provider::Provider;
 use alloy_sol_types::{sol, SolEvent};
 use tracing::info;
@@ -30,7 +30,7 @@ sol! {
 }
 
 /// Withdraw input data.
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct Withdraw {
     /// withdrawal contract address
     /// should be the address of L2ToL1MessagePasser
@@ -40,12 +40,20 @@ pub struct Withdraw {
     pub value: U256,
     pub gas_limit: U256,
     pub data: Bytes,
+    /// Optional: only exists on initiated withdrawal
+    /// transaction hash from execution
+    pub tx_hash: Option<B256>,
 }
 
-#[allow(dead_code)]
 pub struct WithdrawAction<P> {
     provider: P,
     action: Withdraw,
+}
+
+impl<P: Provider + Clone> WithdrawAction<P> {
+    pub const fn new(provider: P, action: Withdraw) -> Self {
+        Self { provider, action }
+    }
 }
 
 impl<P> Action for WithdrawAction<P>
@@ -53,41 +61,45 @@ where
     P: Provider + Clone,
 {
     async fn is_ready(&self) -> eyre::Result<bool> {
+        if self.action.value == U256::ZERO {
+            return Ok(false);
+        }
+
+        if self.action.target == Address::ZERO {
+            return Ok(false);
+        }
+
         let balance = self.provider.get_balance(self.action.source).await?;
         Ok(balance >= self.action.value)
     }
 
     async fn is_completed(&self) -> eyre::Result<bool> {
-        // TODO: This needs to be tightened up. especially around idempotency
-        //       How do we make sure that without nonce it works?
-        //
-        // To check if withdrawal is completed, we need to:
-        // 1. Compute the expected withdrawal hash
-        // 2. Query sentMessages(hash) to see if it's already initiated
-        let contract = L2ToL1MessagePasser::new(self.action.contract, &self.provider);
+        let Some(tx_hash) = self.action.tx_hash else {
+            return Ok(false);
+        };
 
-        // Scan recent MessagePassed events to find if our withdrawal exists
-        // Filter by sender (indexed), target (indexed)
-        let filter = contract
-            .MessagePassed_filter()
-            .address(self.action.contract)
-            .topic1(self.action.source) // sender is indexed
-            .topic2(self.action.target); // target is indexed
+        // Transaction must exist and be mined
+        let Some(receipt) = self.provider.get_transaction_receipt(tx_hash).await? else {
+            return Ok(false);
+        };
 
-        let events = filter.query().await?;
+        // Parse the MessagePassed event to verify it's our withdrawal
+        let Ok((withdrawal_tx, _)) = parse_message_passed_event(&receipt) else {
+            return Ok(false);
+        };
 
-        // Check if any event matches our exact parameters
-        for (message, _) in events {
-            if message.value == self.action.value
-                && message.gasLimit == self.action.gas_limit
-                && message.data == self.action.data
-            {
-                // Found our withdrawal - it's completed
-                return Ok(true);
-            }
+        // Double-check this is our withdrawal by comparing parameters
+        if withdrawal_tx.sender != self.action.source
+            || withdrawal_tx.target != self.action.target
+            || withdrawal_tx.value != self.action.value
+            || withdrawal_tx.gasLimit != self.action.gas_limit
+            || withdrawal_tx.data != self.action.data
+        {
+            return Ok(false);
         }
 
-        Ok(false)
+        // This is definitely our withdrawal, and it's completed
+        Ok(true)
     }
 
     async fn execute(&self) -> eyre::Result<crate::Result> {
@@ -120,7 +132,7 @@ where
         );
 
         Ok(crate::Result {
-            tx_hash: withdrawal_hash,
+            tx_hash: receipt.transaction_hash,
             block_number: receipt.block_number,
             gas_used: Some(U256::from(receipt.gas_used)),
         })

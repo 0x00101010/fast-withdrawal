@@ -68,9 +68,7 @@ pub async fn setup_provider(url: &str) -> impl Provider + Clone {
 ///
 /// # Panics
 /// Panics if no private key is found or if the private key is invalid.
-pub async fn setup_wallet_provider() -> impl Provider + Clone {
-    let config = load_test_config();
-
+pub async fn setup_wallet_provider(url: &str) -> impl Provider + Clone {
     let private_key = load_private_key().expect(
         "Private key required for transaction signing.\n\
          Set PRIVATE_KEY environment variable or create tests/test-config.local.toml\n\
@@ -88,6 +86,6 @@ pub async fn setup_wallet_provider() -> impl Provider + Clone {
     let wallet = alloy_network::EthereumWallet::from(signer);
 
     // Build provider with wallet for signing
-    let url = config.l1_rpc_url.parse().expect("Invalid L1 RPC URL");
+    let url = url.parse().expect("Invalid L1 RPC URL");
     ProviderBuilder::new().wallet(wallet).connect_http(url)
 }
