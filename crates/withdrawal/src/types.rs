@@ -1,14 +1,4 @@
-use alloy_primitives::{Address, Bytes, B256, U256};
-
-/// WithdrawalTransaction represents an onchain withdrawal.
-pub struct WithdrawalTransaction {
-    pub nonce: U256,
-    pub sender: Address,
-    pub target: Address,
-    pub value: U256,
-    pub gas_limit: U256,
-    pub data: Bytes,
-}
+use alloy_primitives::{Address, B256};
 
 pub type WithdrawalHash = B256;
 

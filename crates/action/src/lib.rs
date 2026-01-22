@@ -1,6 +1,6 @@
 pub mod claim;
 pub mod deposit;
-mod withdraw;
+pub mod withdraw;
 
 use alloy_primitives::{TxHash, U256};
 use std::future::Future;
