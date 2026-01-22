@@ -1,27 +1,11 @@
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
-use alloy_sol_types::sol;
-
-sol! {
-    #[sol(rpc)]
-    interface ISpokePool {
-        /// Get the claimable relayer refund balance
-        /// Returns the amount of l2TokenAddress that refundAddress can claim
-        function getRelayerRefund(address l2TokenAddress, address refundAddress) external view returns (uint256);
-
-        /// Claim relayer refund
-        /// Transfers the claimable amount of l2TokenAddress to refundAddress
-        function claimRelayerRefund(address l2TokenAddress, address refundAddress) external;
-
-        // we don't need to do this `claimRelayerRefund`, this is for failure cases
-        // on the data worker cycle, we'll automatically get the tokens
-    }
-}
+use binding::across::ISpokePool;
 
 /// Input for a claim action.
 #[derive(Debug, Clone)]
 pub struct Claim {
-    /// SpokePool contract address
+    /// ISpokePool contract address
     pub spoke_pool: Address,
     /// Token address to claim
     pub token: Address,
@@ -31,7 +15,7 @@ pub struct Claim {
     pub relayer: Address,
 }
 
-/// Claim action for claiming relayer refunds from SpokePool.
+/// Claim action for claiming relayer refunds from ISpokePool.
 pub struct ClaimAction<P> {
     provider: P,
     claim: Claim,
@@ -100,10 +84,7 @@ where
         }
 
         let contract = ISpokePool::new(self.claim.spoke_pool, &self.provider);
-        let tx = contract
-            .claimRelayerRefund(self.claim.token, self.claim.refund_address)
-            .send()
-            .await?;
+        let tx = contract.claimRelayerRefund(self.claim.token).send().await?;
 
         let tx_hash = *tx.tx_hash();
         let receipt = tx.get_receipt().await?;
@@ -120,7 +101,7 @@ where
 
     fn description(&self) -> String {
         format!(
-            "Claim relayer refund for {} from SpokePool to {} to {}",
+            "Claim relayer refund for {} from ISpokePool to {} to {}",
             self.claim.spoke_pool, self.claim.token, self.claim.refund_address,
         )
     }

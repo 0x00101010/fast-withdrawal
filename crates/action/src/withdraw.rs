@@ -1,33 +1,10 @@
 use crate::Action;
 use alloy_primitives::{utils::format_ether, Address, Bytes, B256, U256};
 use alloy_provider::Provider;
-use alloy_sol_types::{sol, SolEvent};
+use alloy_sol_types::SolEvent;
+use binding::opstack::{IL2ToL1MessagePasser, WithdrawalTransaction};
 use tracing::info;
-use withdrawal::{contract::WithdrawalTransaction, types::WithdrawalHash};
-
-sol! {
-    #[sol(rpc)]
-    interface L2ToL1MessagePasser {
-        event MessagePassed(
-           uint256 indexed nonce,
-           address indexed sender,
-           address indexed target,
-           uint256 value,
-           uint256 gasLimit,
-           bytes data,
-           bytes32 withdrawalHash
-       );
-
-       function initiateWithdrawal(
-           address _target,
-           uint256 _gasLimit,
-           bytes calldata _data
-       ) external payable;
-
-       function sentMessages(bytes32) external view returns (bool);
-       function messageNonce() external view returns (uint256);
-    }
-}
+use withdrawal::types::WithdrawalHash;
 
 /// Withdraw input data.
 #[derive(Clone)]
@@ -107,7 +84,7 @@ where
             eyre::bail!("Withdrawal already initiated")
         }
 
-        let contract = L2ToL1MessagePasser::new(self.action.contract, &self.provider);
+        let contract = IL2ToL1MessagePasser::new(self.action.contract, &self.provider);
 
         let tx = contract
             .initiateWithdrawal(
@@ -150,7 +127,7 @@ fn parse_message_passed_event(
     receipt: &alloy_rpc_types_eth::transaction::TransactionReceipt,
 ) -> eyre::Result<(WithdrawalTransaction, WithdrawalHash)> {
     for log in receipt.logs() {
-        if let Ok(event) = L2ToL1MessagePasser::MessagePassed::decode_log(&log.inner) {
+        if let Ok(event) = IL2ToL1MessagePasser::MessagePassed::decode_log(&log.inner) {
             let tx = WithdrawalTransaction {
                 nonce: event.nonce,
                 sender: event.sender,

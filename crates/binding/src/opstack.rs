@@ -11,7 +11,7 @@ sol! {
     /// L2ToL1MessagePasser - L2 predeploy contract for initiating withdrawals
     /// Address: 0x4200000000000000000000000000000000000016 (on all OP Stack chains)
     #[sol(rpc)]
-    interface L2ToL1MessagePasser {
+    interface IL2ToL1MessagePasser {
         /// Emitted when a withdrawal is initiated on L2
         event MessagePassed(
             uint256 indexed nonce,
@@ -39,7 +39,7 @@ sol! {
 
     /// OptimismPortal2 - Main L1 contract for withdrawal proving and finalization
     #[sol(rpc)]
-    interface OptimismPortal2 {
+    interface IOptimismPortal2 {
         /// Proven withdrawal data stored on L1
         struct ProvenWithdrawal {
             address disputeGameProxy;
@@ -92,7 +92,7 @@ sol! {
 
     /// DisputeGameFactory - Used to find dispute games for proof generation
     #[sol(rpc)]
-    interface DisputeGameFactory {
+    interface IDisputeGameFactory {
         /// Dispute game search result
         struct GameSearchResult {
             uint256 index;
@@ -119,6 +119,7 @@ sol! {
     }
 
     /// Withdrawal transaction structure (shared across contracts)
+    #[derive(Debug)]
     struct WithdrawalTransaction {
         uint256 nonce;
         address sender;

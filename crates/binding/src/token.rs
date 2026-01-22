@@ -5,7 +5,7 @@ use alloy_sol_types::sol;
 sol! {
     /// Standard ERC20 token interface
     #[sol(rpc)]
-    interface ERC20 {
+    interface IERC20 {
         /// Emitted when tokens are transferred
         event Transfer(
             address indexed from,

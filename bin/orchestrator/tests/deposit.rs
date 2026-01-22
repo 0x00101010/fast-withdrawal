@@ -37,14 +37,14 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
         spoke_pool: network_config.ethereum.spoke_pool,
         depositor,
         recipient: depositor,
-        input_token: network_config.ethereum.weth,  // WETH on Ethereum
+        input_token: network_config.ethereum.weth, // WETH on Ethereum
         output_token: network_config.unichain.weth, // WETH on Unichain
         input_amount,
         output_amount,
         destination_chain_id: network_config.unichain.chain_id,
         exclusive_relayer: Address::ZERO, // No exclusive relayer
         fill_deadline,
-        exclusivity_parameter: 0,         // No exclusivity period
+        exclusivity_parameter: 0, // No exclusivity period
         message: Bytes::new(),
     }
 }

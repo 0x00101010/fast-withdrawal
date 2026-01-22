@@ -1,29 +1,9 @@
 use crate::{Balance, BalanceQuery, Monitor};
 use alloy_primitives::Address;
 use alloy_provider::Provider;
-use alloy_sol_types::sol;
+use binding::{across::ISpokePool, token::IERC20};
 use eyre::Result;
 use tracing::debug;
-
-// Define SpokePool contract interface using Alloy's sol! macro
-sol! {
-   #[sol(rpc)]
-   interface ISpokePool {
-       /// Get the claimable relayer refund balance
-       /// Returns the amount of l2TokenAddress that refundAddress can claim
-       function getRelayerRefund(address l2TokenAddress, address refundAddress)
-external view returns (uint256);
-   }
-}
-
-// Define ERC20 contract interface
-sol! {
-   #[sol(rpc)]
-   interface IERC20 {
-       /// Get token balance of an account
-       function balanceOf(address account) external view returns (uint256);
-   }
-}
 
 // Balance monitor implementation.
 pub struct BalanceMonitor<P> {

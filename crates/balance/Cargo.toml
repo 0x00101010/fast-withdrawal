@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 # Internal dependencies
+binding = { workspace = true }
 client = { workspace = true }
 
 # Alloy for blockchain interaction

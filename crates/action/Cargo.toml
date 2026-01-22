@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+binding.workspace = true
 withdrawal.workspace = true
 
 alloy-sol-types = { workspace = true }

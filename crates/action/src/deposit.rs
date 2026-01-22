@@ -1,59 +1,18 @@
 use alloy_primitives::{utils::format_ether, Address, Bytes, U256};
 use alloy_provider::Provider;
-use alloy_sol_types::sol;
-
-// Define Across SpokePool contract interface
-// https://github.com/across-protocol/contracts/tree/v4.1.21
-sol! {
-   #[sol(rpc)]
-   #[allow(clippy::too_many_arguments)]
-   interface ISpokePool {
-       /// Deposit tokens cross-chain via Across Protocol (V3)
-       function depositV3(
-           address depositor,
-           address recipient,
-           address inputToken,
-           address outputToken,
-           uint256 inputAmount,
-           uint256 outputAmount,
-           uint256 destinationChainId,
-           address exclusiveRelayer,
-           uint32 quoteTimestamp,
-           uint32 fillDeadline,
-           uint32 exclusivityParameter,
-           bytes calldata message
-       ) external payable;
-
-       /// Event emitted when funds are deposited
-       event FundsDeposited(
-           address inputToken,
-           address outputToken,
-           uint256 inputAmount,
-           uint256 outputAmount,
-           uint256 indexed destinationChainId,
-           uint32 indexed depositId,
-           uint32 quoteTimestamp,
-           uint32 fillDeadline,
-           uint32 exclusivityDeadline,
-           address indexed depositor,
-           address recipient,
-           address exclusiveRelayer,
-           bytes message
-       );
-   }
-}
+use binding::across::ISpokePool;
 
 /// Configuration for a deposit action.
 #[derive(Debug, Clone)]
 pub struct DepositConfig {
-    /// SpokePool contract address on source chain
+    /// ISpokePool contract address on source chain
     pub spoke_pool: Address,
     /// Depositor address (who initiates the deposit)
     pub depositor: Address,
     /// Recipient address on destination chain
     pub recipient: Address,
     /// Input token on source chain
-    /// See <https://github.com/across-protocol/contracts/blob/68a31fd4e9bdc080c86136650420d2c2ecbd1268/contracts/SpokePool.sol#L591-L593>
+    /// See <https://github.com/across-protocol/contracts/blob/68a31fd4e9bdc080c86136650420d2c2ecbd1268/contracts/ISpokePool.sol#L591-L593>
     /// for details. TLDR:
     /// Use WETH address and set input_amount = msg.value.
     pub input_token: Address,
@@ -101,7 +60,7 @@ where
     /// Validate the deposit configuration.
     fn validate_config(&self) -> eyre::Result<()> {
         if self.config.spoke_pool == Address::ZERO {
-            eyre::bail!("SpokePool address is zero");
+            eyre::bail!("ISpokePool address is zero");
         }
 
         if self.config.recipient == Address::ZERO {
@@ -301,7 +260,7 @@ mod tests {
 
         let result = action.validate_config();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("SpokePool"));
+        assert!(result.unwrap_err().to_string().contains("ISpokePool"));
     }
 
     #[test]
@@ -343,7 +302,7 @@ mod tests {
         };
 
         let result = action.validate_config();
-        assert!(!result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

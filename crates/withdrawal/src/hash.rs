@@ -1,6 +1,7 @@
-use crate::{contract::WithdrawalTransaction, types::WithdrawalHash};
+use crate::types::WithdrawalHash;
 use alloy_primitives::keccak256;
 use alloy_sol_types::SolValue;
+use binding::opstack::WithdrawalTransaction;
 
 pub fn compute_withdrawal_hash(tx: &WithdrawalTransaction) -> WithdrawalHash {
     // Solidity's Hashing.hashWithdrawal uses:

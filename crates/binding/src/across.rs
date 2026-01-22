@@ -9,7 +9,8 @@ use alloy_sol_types::sol;
 sol! {
     /// SpokePool - Main contract on each chain for deposits and claims
     #[sol(rpc)]
-    interface SpokePool {
+    #[allow(clippy::too_many_arguments)]
+    interface ISpokePool {
         /// Emitted when funds are deposited
         event FundsDeposited(
             uint256 amount,
