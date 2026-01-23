@@ -1,5 +1,6 @@
 pub mod claim;
 pub mod deposit;
+pub mod finalize;
 pub mod prove;
 pub mod withdraw;
 
