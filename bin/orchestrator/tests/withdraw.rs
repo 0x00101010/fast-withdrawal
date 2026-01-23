@@ -5,12 +5,10 @@ use action::{
 };
 use alloy_primitives::{Address, Bytes, U256};
 use alloy_provider::Provider;
+use binding::opstack::MESSAGE_PASSER_ADDRESS;
 
 #[path = "setup.rs"]
 mod setup;
-
-const MESSAGE_PASSER_ADDRESS: Address =
-    alloy_primitives::address!("4200000000000000000000000000000000000016");
 
 fn create_test_withdrawal(source: Address, target: Address) -> Withdraw {
     let value = U256::from(1_000_000);

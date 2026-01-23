@@ -10,15 +10,13 @@ use action::{
     prove::{Prove, ProveAction},
     Action,
 };
-use alloy_primitives::{address, Address};
 use alloy_provider::Provider;
 use alloy_rpc_types_eth::BlockNumberOrTag;
+use binding::opstack::MESSAGE_PASSER_ADDRESS;
 use withdrawal::{state::WithdrawalStateProvider, types::WithdrawalStatus};
 
 #[path = "setup.rs"]
 mod setup;
-
-const MESSAGE_PASSER_ADDRESS: Address = address!("4200000000000000000000000000000000000016");
 
 /// Test executing prove action for a real pending withdrawal
 ///

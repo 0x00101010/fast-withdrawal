@@ -9,17 +9,10 @@ use alloy_primitives::{keccak256, Address, BlockNumber, Bytes, B256, U256};
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use binding::opstack::{
     IDisputeGameFactory, IFaultDisputeGame, IOptimismPortal2, OutputRootProof,
-    WithdrawalTransaction,
+    WithdrawalTransaction, MESSAGE_PASSER_ADDRESS, OUTPUT_VERSION_V0,
 };
 use eyre::{eyre, Result};
 use tracing::debug;
-
-/// Address of L2ToL1MessagePasser on all OP Stack chains
-const MESSAGE_PASSER_ADDRESS: Address =
-    alloy_primitives::address!("4200000000000000000000000000000000000016");
-
-/// Output root version (currently v0)
-const OUTPUT_VERSION_V0: B256 = B256::ZERO;
 
 /// Parameters required to prove a withdrawal on L1.
 #[derive(Debug, Clone)]

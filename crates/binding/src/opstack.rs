@@ -1,11 +1,38 @@
-//! OP Stack contract bindings.
+//! OP Stack contract bindings and constants.
 //!
 //! Includes contracts for L2→L1 withdrawals:
 //! - L2ToL1MessagePasser (L2 predeploy)
 //! - OptimismPortal2 (L1 contract)
 //! - DisputeGameFactory (L1 contract)
 
+use alloy_primitives::{address, Address, B256};
 use alloy_sol_types::sol;
+
+// ============================================================================
+// OP Stack Constants
+// ============================================================================
+
+/// L2ToL1MessagePasser predeploy address (same on all OP Stack chains).
+pub const MESSAGE_PASSER_ADDRESS: Address = address!("4200000000000000000000000000000000000016");
+
+/// WETH predeploy address on OP Stack L2s.
+pub const L2_WETH_ADDRESS: Address = address!("4200000000000000000000000000000000000006");
+
+/// Current output root version for OptimismPortal2.
+pub const OUTPUT_VERSION_V0: B256 = B256::ZERO;
+
+// ============================================================================
+// Time Constants
+// ============================================================================
+
+/// Seconds per hour (3600).
+pub const SECONDS_PER_HOUR: u64 = 3600;
+
+/// Seconds per day (86400).
+pub const SECONDS_PER_DAY: u64 = 86400;
+
+/// Default proof maturity delay (7 days in seconds).
+pub const DEFAULT_PROOF_MATURITY_DELAY: u64 = 7 * SECONDS_PER_DAY;
 
 sol! {
     /// L2ToL1MessagePasser - L2 predeploy contract for initiating withdrawals

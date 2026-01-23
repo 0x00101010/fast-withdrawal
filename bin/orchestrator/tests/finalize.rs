@@ -10,15 +10,13 @@ use action::{
     finalize::{Finalize, FinalizeAction},
     Action,
 };
-use alloy_primitives::{address, Address};
 use alloy_provider::Provider;
 use alloy_rpc_types_eth::BlockNumberOrTag;
+use binding::opstack::{MESSAGE_PASSER_ADDRESS, SECONDS_PER_DAY, SECONDS_PER_HOUR};
 use withdrawal::{state::WithdrawalStateProvider, types::WithdrawalStatus};
 
 #[path = "setup.rs"]
 mod setup;
-
-const MESSAGE_PASSER_ADDRESS: Address = address!("4200000000000000000000000000000000000016");
 
 /// Test executing finalize action for a real proven withdrawal
 ///
@@ -199,7 +197,7 @@ async fn test_check_proven_withdrawal_status() {
     println!(
         "Proof maturity delay: {} seconds ({} days)",
         maturity_delay_secs,
-        maturity_delay_secs / 86400
+        maturity_delay_secs / SECONDS_PER_DAY
     );
 
     // Get current L1 timestamp
@@ -221,8 +219,8 @@ async fn test_check_proven_withdrawal_status() {
                     );
                 } else {
                     let remaining = ready_at - current_timestamp;
-                    let remaining_hours = remaining / 3600;
-                    let remaining_days = remaining / 86400;
+                    let remaining_hours = remaining / SECONDS_PER_HOUR;
+                    let remaining_days = remaining / SECONDS_PER_DAY;
                     println!(
                         "  {} - NOT READY ({} hours / {} days remaining)",
                         withdrawal.hash, remaining_hours, remaining_days

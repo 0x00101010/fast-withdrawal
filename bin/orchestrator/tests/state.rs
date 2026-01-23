@@ -6,15 +6,13 @@
 //! - Reconstruct state from blockchain
 
 use crate::setup::{load_test_config, setup_provider};
-use alloy_primitives::{address, Address};
 use alloy_provider::Provider;
 use alloy_rpc_types_eth::BlockNumberOrTag;
+use binding::opstack::MESSAGE_PASSER_ADDRESS;
 use withdrawal::{state::WithdrawalStateProvider, types::WithdrawalStatus};
 
 #[path = "setup.rs"]
 mod setup;
-
-const MESSAGE_PASSER_ADDRESS: Address = address!("4200000000000000000000000000000000000016");
 
 #[tokio::test]
 async fn test_state_provider_creation() {
