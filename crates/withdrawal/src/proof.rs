@@ -5,12 +5,11 @@
 
 use crate::types::WithdrawalHash;
 use alloy_contract::private::Provider;
-use alloy_primitives::{keccak256, Address, Bytes, B256, U256};
+use alloy_primitives::{keccak256, Address, BlockNumber, Bytes, B256, U256};
 use alloy_rpc_types_eth::BlockNumberOrTag;
-use alloy_sol_types::SolEvent;
 use binding::opstack::{
-    IDisputeGameFactory, IFaultDisputeGame, IL2ToL1MessagePasser, IOptimismPortal2,
-    OutputRootProof, WithdrawalTransaction,
+    IDisputeGameFactory, IFaultDisputeGame, IOptimismPortal2, OutputRootProof,
+    WithdrawalTransaction,
 };
 use eyre::{eyre, Result};
 use tracing::debug;
@@ -49,61 +48,56 @@ pub struct ProveWithdrawalParams {
 pub async fn generate_proof<P1, P2>(
     l1_provider: &P1,
     l2_provider: &P2,
-    withdrawal_tx_hash: B256,
     portal_address: Address,
     factory_address: Address,
+    withdrawal_hash: WithdrawalHash,
+    withdrawal: WithdrawalTransaction,
+    block_number: BlockNumber,
 ) -> Result<ProveWithdrawalParams>
 where
     P1: Provider + Clone,
     P2: Provider + Clone,
 {
-    // 1. Get withdrawal transaction receipt
-    debug!(tx_hash = %withdrawal_tx_hash, "Fetching withdrawal transaction receipt");
-    let receipt = l2_provider
-        .get_transaction_receipt(withdrawal_tx_hash)
-        .await?
-        .ok_or_else(|| eyre!("Transaction receipt not found: {}", withdrawal_tx_hash))?;
-
-    let block_number = receipt
-        .block_number
-        .ok_or_else(|| eyre!("Receipt missing block number"))?;
-
-    // Parse withdrawal from MessagePassed event
-    let (withdrawal, withdrawal_hash) = parse_withdrawal_from_receipt(&receipt)?;
-
-    debug!(
-        block = block_number,
-        hash = %withdrawal_hash,
-        "Parsed withdrawal from receipt"
-    );
-
-    // 2. Get L2 block header
-    debug!(block = block_number, "Fetching L2 block header");
-    let block = l2_provider
-        .get_block_by_number(BlockNumberOrTag::Number(block_number))
-        .await?
-        .ok_or_else(|| eyre!("Block not found: {}", block_number))?;
-
-    let state_root = block.header.state_root;
-    let block_hash = block.header.hash;
-
-    // 3. Find a finalized dispute game covering this block
+    // 1. Find a dispute game covering the withdrawal block
     debug!(
         withdrawal_block = block_number,
         "Finding dispute game covering withdrawal block"
     );
-    let dispute_game_index =
+    let (dispute_game_index, game_l2_block) =
         find_game_for_withdrawal(l1_provider, portal_address, factory_address, block_number)
             .await?;
 
-    debug!(game_index = %dispute_game_index, "Found suitable dispute game");
+    debug!(
+        game_index = %dispute_game_index,
+        game_l2_block = game_l2_block,
+        withdrawal_block = block_number,
+        "Found suitable dispute game"
+    );
 
-    // 4. Get storage proof using eth_getProof
-    debug!("Generating storage proof");
+    // 2. Get L2 block header for the GAME's block (not the withdrawal block!)
+    // The output root proof must match the dispute game's committed state
+    debug!(
+        block = game_l2_block,
+        "Fetching L2 block header for game's L2 block"
+    );
+    let block = l2_provider
+        .get_block_by_number(BlockNumberOrTag::Number(game_l2_block))
+        .await?
+        .ok_or_else(|| eyre!("Block not found: {}", game_l2_block))?;
+
+    let state_root = block.header.state_root;
+    let block_hash = block.header.hash;
+
+    // 3. Get storage proof using eth_getProof at the GAME's block
+    // The withdrawal must exist at this block (which is >= withdrawal block)
+    debug!(
+        block = game_l2_block,
+        "Generating storage proof at game's L2 block"
+    );
     let storage_slot = compute_storage_slot(withdrawal_hash);
     let proof_result = l2_provider
         .get_proof(MESSAGE_PASSER_ADDRESS, vec![storage_slot])
-        .block_id(BlockNumberOrTag::Number(block_number).into())
+        .block_id(BlockNumberOrTag::Number(game_l2_block).into())
         .await?;
 
     let message_passer_storage_root = proof_result.storage_hash;
@@ -119,7 +113,7 @@ where
         "Generated storage proof"
     );
 
-    // 5. Build output root proof
+    // 4. Build output root proof
     let output_root_proof = OutputRootProof {
         version: OUTPUT_VERSION_V0,
         stateRoot: state_root,
@@ -135,28 +129,6 @@ where
     })
 }
 
-/// Parse withdrawal transaction from receipt's MessagePassed event.
-fn parse_withdrawal_from_receipt(
-    receipt: &alloy_rpc_types_eth::TransactionReceipt,
-) -> Result<(WithdrawalTransaction, WithdrawalHash)> {
-    // Find MessagePassed event
-    for log in receipt.inner.logs() {
-        if let Ok(event) = IL2ToL1MessagePasser::MessagePassed::decode_log(&log.inner) {
-            let tx = WithdrawalTransaction {
-                nonce: event.nonce,
-                sender: event.sender,
-                target: event.target,
-                value: event.value,
-                gasLimit: event.gasLimit,
-                data: event.data.data.clone(),
-            };
-            return Ok((tx, event.withdrawalHash));
-        }
-    }
-
-    Err(eyre!("MessagePassed event not found in receipt"))
-}
-
 /// Find a dispute game that covers the withdrawal's L2 block.
 ///
 /// This function searches through recent dispute games to find one where:
@@ -168,12 +140,13 @@ fn parse_withdrawal_from_receipt(
 ///
 /// Games are created roughly every hour, so we typically only need to check
 /// a few dozen games even for withdrawals from weeks ago.
+/// Returns (dispute_game_index, game_l2_block_number)
 async fn find_game_for_withdrawal<P>(
     l1_provider: &P,
     portal_address: Address,
     factory_address: Address,
     withdrawal_l2_block: u64,
-) -> Result<U256>
+) -> Result<(U256, u64)>
 where
     P: Provider + Clone,
 {
@@ -192,7 +165,7 @@ where
     }
     debug!(total_games = %game_count, "Starting search from latest game");
 
-    const MAX_GAMES_TO_CHECK: u64 = 350; // ~14 days at 1 game/hour
+    const MAX_GAMES_TO_CHECK: u64 = 1000; // ~40 days at 1 game/hour
     let start = game_count.saturating_sub(U256::from(1));
 
     debug!(
@@ -210,32 +183,116 @@ where
         eyre::bail!("No games of type {} found", game_type);
     }
 
+    debug!(
+        found_games = games.len(),
+        first_game_index = %games.first().map(|g| g.index).unwrap_or(U256::ZERO),
+        last_game_index = %games.last().map(|g| g.index).unwrap_or(U256::ZERO),
+        game_count = %game_count,
+        "Found games for binary search"
+    );
+
+    // Log the newest game's L2 block to verify we can cover the withdrawal
+    if let Some(newest_game) = games.first() {
+        let newest_address = Address::from_slice(&newest_game.metadata.as_slice()[12..32]);
+        let newest_contract = IFaultDisputeGame::new(newest_address, l1_provider);
+        if let Ok(newest_l2_block) = newest_contract.l2BlockNumber().call().await {
+            debug!(
+                newest_game_index = %newest_game.index,
+                newest_game_l2_block = newest_l2_block.to::<u64>(),
+                withdrawal_l2_block,
+                "Newest game L2 block check"
+            );
+        }
+    }
+
+    // Validate that all game indices are within bounds
+    for game in &games {
+        if game.index >= game_count {
+            return Err(eyre!(
+                "Invalid game index {} >= game count {}",
+                game.index,
+                game_count
+            ));
+        }
+    }
+
+    // Binary search to find the oldest game that covers the withdrawal.
+    // Games array is sorted in DESCENDING order by L2 block:
+    //   games[0] = newest (highest L2 block)
+    //   games[len-1] = oldest (lowest L2 block)
+    //
+    // We want to find the rightmost (oldest) game where game_l2_block >= withdrawal_l2_block.
+    // This is equivalent to finding the first game where game_l2_block < withdrawal_l2_block,
+    // then returning the game just before it.
     let mut lo = 0;
     let mut hi = games.len();
+
     while lo < hi {
         let mi = lo + (hi - lo) / 2;
         let game = &games[mi];
 
-        let game_address = factory.gameAtIndex(game.index).call().await?;
+        // Extract game proxy address from metadata (GameId)
+        // GameId format: type (32 bits) | timestamp (64 bits) | proxy address (160 bits)
+        // The address is in the lower 160 bits (20 bytes)
+        let game_address = Address::from_slice(&game.metadata.as_slice()[12..32]);
+
+        debug!(
+            game_index = %game.index,
+            game_address = %game_address,
+            array_index = mi,
+            "Processing game from search results"
+        );
+
         let game_contract = IFaultDisputeGame::new(game_address, l1_provider);
-        let game_l2_block = game_contract.l2BlockNumber().call().await?;
-        if game_l2_block.to::<u64>() >= withdrawal_l2_block {
-            hi = mi;
+        let game_l2_block = game_contract.l2BlockNumber().call().await.map_err(|e| {
+            eyre!(
+                "Failed to call l2BlockNumber on game {} at address {}: {}",
+                game.index,
+                game_address,
+                e
+            )
+        })?;
+
+        let game_l2_block_num = game_l2_block.to::<u64>();
+        debug!(
+            game_index = %game.index,
+            game_l2_block = game_l2_block_num,
+            withdrawal_l2_block,
+            covers = game_l2_block_num >= withdrawal_l2_block,
+            "Game L2 block comparison"
+        );
+
+        // In descending order: if this game covers, search right (older) for more candidates
+        // If this game doesn't cover, search left (newer) for a game that does
+        if game_l2_block_num >= withdrawal_l2_block {
+            lo = mi + 1; // This game covers, but older games might too - search right
         } else {
-            lo = mi + 1;
+            hi = mi; // This game is too old, search left for newer games
         }
     }
 
-    // We're unable to find a game.
-    if lo >= games.len() {
+    // lo is now pointing to the first game that DOESN'T cover (or past the end).
+    // The game we want is at lo - 1 (the last game that covers).
+    if lo == 0 {
+        // Even the newest game doesn't cover the withdrawal
         eyre::bail!(
-            "No games of type {} found after {} games searched",
+            "No games of type {} found covering L2 block {} (newest game L2 block is older)",
             game_type,
-            games.len()
+            withdrawal_l2_block
         );
     }
 
-    Ok(games[lo].index)
+    let selected_game = &games[lo - 1];
+
+    // We need to get the L2 block for the selected game.
+    // If we happened to check it during binary search, we might have it cached,
+    // but the binary search may not have checked this exact game.
+    // Re-fetch to be safe.
+    let game_address = Address::from_slice(&selected_game.metadata.as_slice()[12..32]);
+    let game_contract = IFaultDisputeGame::new(game_address, l1_provider);
+    let game_l2_block = game_contract.l2BlockNumber().call().await?.to::<u64>();
+
+    Ok((selected_game.index, game_l2_block))
 }
 
 /// Compute the storage slot for a withdrawal hash in the L2ToL1MessagePasser contract.

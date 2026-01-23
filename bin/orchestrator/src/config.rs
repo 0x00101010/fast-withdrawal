@@ -19,6 +19,9 @@ pub struct Config {
 
     /// EOA address
     pub eoa_address: Address,
+
+    /// L1 DisputeGameFactory address (for finding dispute games)
+    pub l1_dispute_game_factory_address: Address,
 }
 
 impl Config {

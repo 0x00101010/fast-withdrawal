@@ -6,13 +6,30 @@ use alloy_signer_local::PrivateKeySigner;
 use orchestrator::config::Config;
 use serde::Deserialize;
 
-/// Local configuration with private key (git-ignored file)
-#[derive(Debug, Deserialize)]
+/// Local configuration overrides (git-ignored file)
+#[derive(Debug, Default, Deserialize)]
 struct LocalConfig {
-    private_key: String,
+    private_key: Option<String>,
+    l1_rpc_url: Option<String>,
+    l2_rpc_url: Option<String>,
+}
+
+/// Load local config overrides from tests/test-config.local.toml
+fn load_local_config() -> LocalConfig {
+    let local_config_path = "tests/test-config.local.toml";
+    if let Ok(contents) = std::fs::read_to_string(local_config_path) {
+        if let Ok(config) = toml::from_str::<LocalConfig>(&contents) {
+            return config;
+        }
+    }
+    LocalConfig::default()
 }
 
 /// Load test configuration. Panics if not found or invalid.
+///
+/// Supports overrides via environment variables or tests/test-config.local.toml:
+/// - L1_RPC_URL: Override L1 RPC endpoint
+/// - L2_RPC_URL: Override L2 RPC endpoint
 pub fn load_test_config() -> Config {
     let config_path = "tests/test-config.toml";
 
@@ -21,7 +38,30 @@ pub fn load_test_config() -> Config {
     eprintln!("Current working directory: {:?}", current_dir);
     eprintln!("Looking for config at: {:?}", current_dir.join(config_path));
 
-    Config::from_file(config_path).expect("Failed to load tests/test-config.toml.")
+    let mut config = Config::from_file(config_path).expect("Failed to load tests/test-config.toml.");
+
+    // Load local overrides
+    let local = load_local_config();
+
+    // Override L1 RPC URL (env var takes priority over local config)
+    if let Ok(url) = std::env::var("L1_RPC_URL") {
+        eprintln!("✓ Overriding L1 RPC URL from L1_RPC_URL env var");
+        config.l1_rpc_url = url;
+    } else if let Some(url) = local.l1_rpc_url {
+        eprintln!("✓ Overriding L1 RPC URL from test-config.local.toml");
+        config.l1_rpc_url = url;
+    }
+
+    // Override L2 RPC URL (env var takes priority over local config)
+    if let Ok(url) = std::env::var("L2_RPC_URL") {
+        eprintln!("✓ Overriding L2 RPC URL from L2_RPC_URL env var");
+        config.l2_rpc_url = url;
+    } else if let Some(url) = local.l2_rpc_url {
+        eprintln!("✓ Overriding L2 RPC URL from test-config.local.toml");
+        config.l2_rpc_url = url;
+    }
+
+    config
 }
 
 /// Load private key for signing transactions.
@@ -39,12 +79,10 @@ pub fn load_private_key() -> Option<String> {
     }
 
     // Try 2: Local config file (git-ignored)
-    let local_config_path = "tests/test-config.local.toml";
-    if let Ok(contents) = std::fs::read_to_string(local_config_path) {
-        if let Ok(config) = toml::from_str::<LocalConfig>(&contents) {
-            eprintln!("✓ Loaded private key from {}", local_config_path);
-            return Some(config.private_key);
-        }
+    let local = load_local_config();
+    if let Some(pk) = local.private_key {
+        eprintln!("✓ Loaded private key from test-config.local.toml");
+        return Some(pk);
     }
 
     eprintln!("⚠ No private key found. Checked:");

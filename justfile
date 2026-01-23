@@ -47,11 +47,11 @@ run-withdraw:
 
 # Run withdrawal prove test (requires funds and initiated withdrawal)
 run-prove:
-    cargo nextest run --package orchestrator --test withdraw --run-ignored ignored-only test_prove_withdrawal
+    cargo nextest run --package orchestrator --test prove --run-ignored ignored-only test_prove_action_execute
 
 # Run withdrawal finalize test (requires funds and proven withdrawal after 7 days)
 run-finalize:
-    cargo nextest run --package orchestrator --test withdraw --run-ignored ignored-only test_finalize_withdrawal
+    cargo nextest run --package orchestrator --test finalize --run-ignored ignored-only test_finalize_action_execute
 
 # Fix all auto-fixable issues
 fix: fix-fmt clippy-fix

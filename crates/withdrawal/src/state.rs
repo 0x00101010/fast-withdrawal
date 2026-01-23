@@ -51,13 +51,13 @@ where
     pub async fn query_withdrawal_status(
         &self,
         hash: WithdrawalHash,
-        proof_submitter: Address,
+        withdrawal_initiator: Address,
     ) -> eyre::Result<WithdrawalStatus> {
         if self.is_finalized(hash).await? {
             return Ok(WithdrawalStatus::Finalized);
         }
 
-        if let Some(proven) = self.is_proven(hash, proof_submitter).await? {
+        if let Some(proven) = self.is_proven(hash, withdrawal_initiator).await? {
             return Ok(WithdrawalStatus::Proven {
                 timestamp: proven.timestamp,
             });
@@ -74,7 +74,13 @@ where
     /// This method:
     /// 1. Resolves `Latest` to concrete block numbers immediately (handles load balancer inconsistency)
     /// 2. Chunks requests into 9,500 block ranges (with 500 block safety margin)
-    /// 3. Retries failed chunks with exponential backoff
+    /// 3. Filters for withdrawals initiated by `withdrawal_initiator` address
+    /// 4. Queries L1 to check if the withdrawal has been proven by `withdrawal_initiator`
+    /// 5. Retries failed chunks with exponential backoff
+    ///
+    /// The `withdrawal_initiator` parameter serves dual purpose:
+    /// - Filters L2 events to only withdrawals where `sender == withdrawal_initiator`
+    /// - Checks L1 proven status for proofs submitted by `withdrawal_initiator`
     ///
     /// The safety margin and chunking handle RPC providers that may be slightly out of sync
     /// when behind a load balancer.
@@ -82,7 +88,7 @@ where
         &self,
         from_block: BlockNumberOrTag,
         to_block: BlockNumberOrTag,
-        proof_submitter: Address,
+        withdrawal_initiator: Address,
     ) -> eyre::Result<Vec<PendingWithdrawal>> {
         // CRITICAL: Resolve both endpoints to concrete block numbers FIRST
         // This creates a consistent snapshot and prevents load balancer issues
@@ -103,7 +109,7 @@ where
             "Scanning for withdrawals (snapshot taken)"
         );
 
-        self.scan_chunks(from_block_num, to_block_num, proof_submitter)
+        self.scan_chunks(from_block_num, to_block_num, withdrawal_initiator)
             .await
     }
 
@@ -124,7 +130,7 @@ where
         &self,
         from_block: u64,
         to_block: u64,
-        proof_submitter: Address,
+        withdrawal_initiator: Address,
     ) -> eyre::Result<Vec<PendingWithdrawal>> {
         // Use 9,500 block chunks (500 block safety margin for RPC limits)
         const CHUNK_SIZE: u64 = 9_500;
@@ -143,7 +149,7 @@ where
 
             // Retry chunk with exponential backoff on failure
             let chunk_withdrawals = self
-                .scan_chunk_with_retry(current, chunk_end, proof_submitter)
+                .scan_chunk_with_retry(current, chunk_end, withdrawal_initiator)
                 .await?;
 
             all_withdrawals.extend(chunk_withdrawals);
@@ -158,13 +164,13 @@ where
         &self,
         from_block: u64,
         to_block: u64,
-        proof_submitter: Address,
+        withdrawal_initiator: Address,
     ) -> eyre::Result<Vec<PendingWithdrawal>> {
         // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1.6s (max 5 attempts)
         let retry_strategy = ExponentialBackoff::from_millis(100).take(5);
 
         Retry::spawn(retry_strategy, || async {
-            self.scan_chunk(from_block, to_block, proof_submitter)
+            self.scan_chunk(from_block, to_block, withdrawal_initiator)
                 .await
                 .map_err(|e| {
                     warn!(
@@ -184,7 +190,7 @@ where
         &self,
         from_block: u64,
         to_block: u64,
-        proof_submitter: Address,
+        withdrawal_initiator: Address,
     ) -> eyre::Result<Vec<PendingWithdrawal>> {
         let contract = IL2ToL1MessagePasser::new(self.message_passer_address, &self.l2_provider);
 
@@ -196,6 +202,11 @@ where
 
         let mut withdrawals = vec![];
         for (event, log) in events {
+            // Filter: only include withdrawals initiated by withdrawal_initiator address
+            if event.sender != withdrawal_initiator {
+                continue;
+            }
+
             let tx = WithdrawalTransaction {
                 nonce: event.nonce,
                 sender: event.sender,
@@ -219,7 +230,7 @@ where
 
             // Query the current status of this withdrawal
             let status = self
-                .query_withdrawal_status(event.withdrawalHash, proof_submitter)
+                .query_withdrawal_status(event.withdrawalHash, withdrawal_initiator)
                 .await?;
 
             // Skip finalized withdrawals - nothing to do
@@ -247,11 +258,11 @@ where
     pub async fn is_proven(
         &self,
         hash: WithdrawalHash,
-        proof_submitter: Address,
+        withdrawal_initiator: Address,
     ) -> eyre::Result<Option<ProvenWithdrawal>> {
         let portal = IOptimismPortal2::new(self.portal_address, &self.l1_provider);
         let proven = portal
-            .provenWithdrawals(hash, proof_submitter)
+            .provenWithdrawals(hash, withdrawal_initiator)
             .call()
             .await?;
 

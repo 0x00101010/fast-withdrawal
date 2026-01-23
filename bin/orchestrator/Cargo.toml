@@ -15,6 +15,7 @@ path = "src/bin/main.rs"
 client = { workspace = true }
 balance = { workspace = true }
 action = { workspace = true }
+binding = { workspace = true }
 config = { workspace = true }
 withdrawal = { workspace = true }
 

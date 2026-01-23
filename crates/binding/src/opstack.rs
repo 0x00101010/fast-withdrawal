@@ -113,8 +113,9 @@ sol! {
             uint256 _n
         ) external view returns (GameSearchResult[] memory);
 
-        /// Get the address of a dispute game by index
-        function gameAtIndex(uint256 _index) external view returns (address);
+        /// Get a dispute game by index
+        /// Returns (gameType, timestamp, proxy address)
+        function gameAtIndex(uint256 _index) external view returns (uint32 gameType_, uint64 timestamp_, address proxy_);
     }
 
     /// IFaultDisputeGame - Standard interface for fault dispute games

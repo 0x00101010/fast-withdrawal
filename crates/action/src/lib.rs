@@ -1,5 +1,6 @@
 pub mod claim;
 pub mod deposit;
+pub mod prove;
 pub mod withdraw;
 
 use alloy_primitives::{TxHash, U256};
