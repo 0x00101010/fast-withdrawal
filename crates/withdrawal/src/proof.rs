@@ -1,0 +1,327 @@
+//! Proof generation for L2→L1 withdrawals.
+//!
+//! This module generates the cryptographic proofs required to prove a withdrawal
+//! on L1 using the OP Stack's fault proof system.
+
+use crate::types::WithdrawalHash;
+use alloy_contract::private::Provider;
+use alloy_primitives::{keccak256, Address, Bytes, B256, U256};
+use alloy_rpc_types_eth::BlockNumberOrTag;
+use alloy_sol_types::SolEvent;
+use binding::opstack::{
+    IDisputeGameFactory, IFaultDisputeGame, IL2ToL1MessagePasser, IOptimismPortal2,
+    OutputRootProof, WithdrawalTransaction,
+};
+use eyre::{eyre, Result};
+use tracing::debug;
+
+/// Address of L2ToL1MessagePasser on all OP Stack chains
+const MESSAGE_PASSER_ADDRESS: Address =
+    alloy_primitives::address!("4200000000000000000000000000000000000016");
+
+/// Output root version (currently v0)
+const OUTPUT_VERSION_V0: B256 = B256::ZERO;
+
+/// Parameters required to prove a withdrawal on L1.
+#[derive(Debug, Clone)]
+pub struct ProveWithdrawalParams {
+    pub withdrawal: WithdrawalTransaction,
+    pub dispute_game_index: U256,
+    pub output_root_proof: OutputRootProof,
+    pub withdrawal_proof: Vec<Bytes>,
+}
+
+/// Generate proof for a withdrawal that was initiated on L2.
+///
+/// This function:
+/// 1. Fetches the withdrawal transaction receipt from L2
+/// 2. Gets the L2 block header containing the withdrawal
+/// 3. Finds a finalized dispute game covering this block
+/// 4. Generates a Merkle proof that the withdrawal exists in L2 state
+/// 5. Builds the output root proof structure
+///
+/// # Arguments
+/// * `l1_provider` - Provider for L1 queries (dispute game, portal)
+/// * `l2_provider` - Provider for L2 queries (receipt, block, proof)
+/// * `withdrawal_tx_hash` - Transaction hash of the initiateWithdrawal call on L2
+/// * `portal_address` - Address of OptimismPortal2 on L1
+/// * `factory_address` - Address of DisputeGameFactory on L1
+pub async fn generate_proof<P1, P2>(
+    l1_provider: &P1,
+    l2_provider: &P2,
+    withdrawal_tx_hash: B256,
+    portal_address: Address,
+    factory_address: Address,
+) -> Result<ProveWithdrawalParams>
+where
+    P1: Provider + Clone,
+    P2: Provider + Clone,
+{
+    // 1. Get withdrawal transaction receipt
+    debug!(tx_hash = %withdrawal_tx_hash, "Fetching withdrawal transaction receipt");
+    let receipt = l2_provider
+        .get_transaction_receipt(withdrawal_tx_hash)
+        .await?
+        .ok_or_else(|| eyre!("Transaction receipt not found: {}", withdrawal_tx_hash))?;
+
+    let block_number = receipt
+        .block_number
+        .ok_or_else(|| eyre!("Receipt missing block number"))?;
+
+    // Parse withdrawal from MessagePassed event
+    let (withdrawal, withdrawal_hash) = parse_withdrawal_from_receipt(&receipt)?;
+
+    debug!(
+        block = block_number,
+        hash = %withdrawal_hash,
+        "Parsed withdrawal from receipt"
+    );
+
+    // 2. Get L2 block header
+    debug!(block = block_number, "Fetching L2 block header");
+    let block = l2_provider
+        .get_block_by_number(BlockNumberOrTag::Number(block_number))
+        .await?
+        .ok_or_else(|| eyre!("Block not found: {}", block_number))?;
+
+    let state_root = block.header.state_root;
+    let block_hash = block.header.hash;
+
+    // 3. Find a finalized dispute game covering this block
+    debug!(
+        withdrawal_block = block_number,
+        "Finding dispute game covering withdrawal block"
+    );
+    let dispute_game_index =
+        find_game_for_withdrawal(l1_provider, portal_address, factory_address, block_number)
+            .await?;
+
+    debug!(game_index = %dispute_game_index, "Found suitable dispute game");
+
+    // 4. Get storage proof using eth_getProof
+    debug!("Generating storage proof");
+    let storage_slot = compute_storage_slot(withdrawal_hash);
+    let proof_result = l2_provider
+        .get_proof(MESSAGE_PASSER_ADDRESS, vec![storage_slot])
+        .block_id(BlockNumberOrTag::Number(block_number).into())
+        .await?;
+
+    let message_passer_storage_root = proof_result.storage_hash;
+    let withdrawal_proof = proof_result
+        .storage_proof
+        .first()
+        .ok_or_else(|| eyre!("No storage proof returned"))?
+        .proof
+        .clone();
+
+    debug!(
+        proof_nodes = withdrawal_proof.len(),
+        "Generated storage proof"
+    );
+
+    // 5. Build output root proof
+    let output_root_proof = OutputRootProof {
+        version: OUTPUT_VERSION_V0,
+        stateRoot: state_root,
+        messagePasserStorageRoot: message_passer_storage_root,
+        latestBlockhash: block_hash,
+    };
+
+    Ok(ProveWithdrawalParams {
+        withdrawal,
+        dispute_game_index,
+        output_root_proof,
+        withdrawal_proof,
+    })
+}
+
+/// Parse withdrawal transaction from receipt's MessagePassed event.
+fn parse_withdrawal_from_receipt(
+    receipt: &alloy_rpc_types_eth::TransactionReceipt,
+) -> Result<(WithdrawalTransaction, WithdrawalHash)> {
+    // Find MessagePassed event
+    for log in receipt.inner.logs() {
+        if let Ok(event) = IL2ToL1MessagePasser::MessagePassed::decode_log(&log.inner) {
+            let tx = WithdrawalTransaction {
+                nonce: event.nonce,
+                sender: event.sender,
+                target: event.target,
+                value: event.value,
+                gasLimit: event.gasLimit,
+                data: event.data.data.clone(),
+            };
+            return Ok((tx, event.withdrawalHash));
+        }
+    }
+
+    Err(eyre!("MessagePassed event not found in receipt"))
+}
+
+/// Find a dispute game that covers the withdrawal's L2 block.
+///
+/// This function searches through recent dispute games to find one where:
+/// - The game's L2 block number >= withdrawal's L2 block number
+///
+/// Note: For proving, we don't need the game to be finalized - we can prove
+/// against an in-flight dispute game. Finalization is only required for the
+/// finalize step after the challenge period.
+///
+/// Games are created roughly every hour, so we typically only need to check
+/// a few dozen games even for withdrawals from weeks ago.
+async fn find_game_for_withdrawal<P>(
+    l1_provider: &P,
+    portal_address: Address,
+    factory_address: Address,
+    withdrawal_l2_block: u64,
+) -> Result<U256>
+where
+    P: Provider + Clone,
+{
+    // Get the respected game type from portal
+    let portal = IOptimismPortal2::new(portal_address, l1_provider);
+    let game_type = portal.respectedGameType().call().await?;
+
+    debug!(game_type, "Got respected game type from portal");
+
+    let factory = IDisputeGameFactory::new(factory_address, l1_provider);
+
+    // Get total game count to start from the latest
+    let game_count = factory.gameCount().call().await?;
+    if game_count == U256::ZERO {
+        return Err(eyre!("No dispute games exist"));
+    }
+    debug!(total_games = %game_count, "Starting search from latest game");
+
+    const MAX_GAMES_TO_CHECK: u64 = 350; // ~14 days at 1 game/hour
+    let start = game_count.saturating_sub(U256::from(1));
+
+    debug!(
+        start_index = %start,
+        lookback = %MAX_GAMES_TO_CHECK,
+        "Fetching batch of games"
+    );
+
+    let games = factory
+        .findLatestGames(game_type, start, U256::from(MAX_GAMES_TO_CHECK))
+        .call()
+        .await?;
+
+    if games.is_empty() {
+        eyre::bail!("No games of type {} found", game_type);
+    }
+
+    let mut lo = 0;
+    let mut hi = games.len();
+    while lo < hi {
+        let mi = lo + (hi - lo) / 2;
+        let game = &games[mi];
+
+        let game_address = factory.gameAtIndex(game.index).call().await?;
+        let game_contract = IFaultDisputeGame::new(game_address, l1_provider);
+        let game_l2_block = game_contract.l2BlockNumber().call().await?;
+        if game_l2_block.to::<u64>() >= withdrawal_l2_block {
+            hi = mi;
+        } else {
+            lo = mi + 1;
+        }
+    }
+
+    // We're unable to find a game.
+    if lo >= games.len() {
+        eyre::bail!(
+            "No games of type {} found after {} games searched",
+            game_type,
+            games.len()
+        );
+    }
+
+    Ok(games[lo].index)
+}
+
+/// Compute the storage slot for a withdrawal hash in the L2ToL1MessagePasser contract.
+///
+/// The storage layout is: `mapping(bytes32 => bool) public sentMessages`
+/// Solidity storage slot = keccak256(key || slot_index)
+/// For our mapping at slot 0: keccak256(withdrawalHash || 0)
+pub fn compute_storage_slot(withdrawal_hash: B256) -> B256 {
+    let mut data = [0u8; 64];
+    data[0..32].copy_from_slice(withdrawal_hash.as_slice());
+    // data[32..64] is already zeros (mapping is at slot 0)
+    keccak256(data)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_storage_slot() {
+        let withdrawal_hash = B256::from([1u8; 32]);
+        let slot = compute_storage_slot(withdrawal_hash);
+
+        // Verify it's deterministic
+        let slot2 = compute_storage_slot(withdrawal_hash);
+        assert_eq!(slot, slot2);
+
+        // Verify different hashes produce different slots
+        let other_hash = B256::from([2u8; 32]);
+        let other_slot = compute_storage_slot(other_hash);
+        assert_ne!(slot, other_slot);
+    }
+
+    #[test]
+    fn test_storage_slot_format() {
+        // Storage slot should be keccak256(withdrawalHash || 0x00...00)
+        let withdrawal_hash = B256::ZERO;
+        let slot = compute_storage_slot(withdrawal_hash);
+
+        // Manually compute expected value
+        let data = [0u8; 64];
+        let expected = keccak256(data);
+
+        assert_eq!(slot, expected);
+    }
+
+    #[test]
+    fn test_prove_params_structure() {
+        let params = ProveWithdrawalParams {
+            withdrawal: WithdrawalTransaction {
+                nonce: U256::from(1),
+                sender: Address::ZERO,
+                target: Address::ZERO,
+                value: U256::from(1000),
+                gasLimit: U256::from(100000),
+                data: Bytes::new(),
+            },
+            dispute_game_index: U256::from(42),
+            output_root_proof: OutputRootProof {
+                version: OUTPUT_VERSION_V0,
+                stateRoot: B256::ZERO,
+                messagePasserStorageRoot: B256::ZERO,
+                latestBlockhash: B256::ZERO,
+            },
+            withdrawal_proof: vec![Bytes::from(vec![1, 2, 3])],
+        };
+
+        assert_eq!(params.dispute_game_index, U256::from(42));
+        assert_eq!(params.withdrawal_proof.len(), 1);
+    }
+
+    #[test]
+    fn test_compute_storage_slot_real_example() {
+        // Test with a real withdrawal hash pattern
+        let withdrawal_hash = B256::from_slice(&[
+            0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab,
+            0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78,
+            0x90, 0xab, 0xcd, 0xef,
+        ]);
+
+        let slot = compute_storage_slot(withdrawal_hash);
+
+        // Verify the slot is 32 bytes
+        assert_eq!(slot.len(), 32);
+
+        // Verify it's not zero (would indicate a bug)
+        assert_ne!(slot, B256::ZERO);
+    }
+}

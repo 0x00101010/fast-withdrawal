@@ -103,15 +103,35 @@ sol! {
             bytes extraData;
         }
 
+        /// Get the total number of dispute games created
+        function gameCount() external view returns (uint256 gameCount_);
+
         /// Find latest games of a given type
         function findLatestGames(
             uint32 _gameType,
             uint256 _start,
             uint256 _n
         ) external view returns (GameSearchResult[] memory);
+
+        /// Get the address of a dispute game by index
+        function gameAtIndex(uint256 _index) external view returns (address);
+    }
+
+    /// IFaultDisputeGame - Standard interface for fault dispute games
+    #[sol(rpc)]
+    interface IFaultDisputeGame {
+        /// Get the L2 block number this game is disputing
+        function l2BlockNumber() external view returns (uint256);
+
+        /// Get the game status
+        function status() external view returns (uint8);
+
+        /// Get the root claim (output root)
+        function rootClaim() external view returns (bytes32);
     }
 
     /// Output root proof structure (used in proving withdrawals)
+    #[derive(Debug)]
     struct OutputRootProof {
         bytes32 version;
         bytes32 stateRoot;
