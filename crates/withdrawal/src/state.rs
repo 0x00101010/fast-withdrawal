@@ -4,6 +4,7 @@ use crate::{
 };
 use alloy_contract::private::Provider;
 use alloy_primitives::Address;
+use alloy_rpc_types_eth::BlockNumberOrTag;
 use binding::opstack::{
     IL2ToL1MessagePasser, IOptimismPortal2, IOptimismPortal2::ProvenWithdrawal,
     WithdrawalTransaction,
@@ -70,8 +71,8 @@ where
     /// with their current status (Initiated or Proven).
     pub async fn get_pending_withdrawals(
         &self,
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockNumberOrTag,
+        to_block: BlockNumberOrTag,
         proof_submitter: Address,
     ) -> eyre::Result<Vec<PendingWithdrawal>> {
         let contract = IL2ToL1MessagePasser::new(self.message_passer_address, &self.l2_provider);

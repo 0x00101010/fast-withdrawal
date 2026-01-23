@@ -8,14 +8,13 @@
 use crate::setup::{load_test_config, setup_provider};
 use alloy_primitives::{address, Address};
 use alloy_provider::Provider;
-use withdrawal::state::WithdrawalStateProvider;
-use withdrawal::types::WithdrawalStatus;
+use alloy_rpc_types_eth::BlockNumberOrTag;
+use withdrawal::{state::WithdrawalStateProvider, types::WithdrawalStatus};
 
 #[path = "setup.rs"]
 mod setup;
 
-const MESSAGE_PASSER_ADDRESS: Address =
-    address!("4200000000000000000000000000000000000016");
+const MESSAGE_PASSER_ADDRESS: Address = address!("4200000000000000000000000000000000000016");
 
 #[tokio::test]
 async fn test_state_provider_creation() {
@@ -57,16 +56,23 @@ async fn test_scan_pending_withdrawals_larger_range() {
 
     // Scan last 10,000 blocks (should find some withdrawals on testnet)
     let current_block = l2_provider.get_block_number().await.unwrap();
-    let from_block = current_block.saturating_sub(10_000);
+    let from_block = current_block.saturating_sub(9_990);
 
     println!("Scanning blocks {} to {}", from_block, current_block);
 
     let withdrawals = state_provider
-        .get_pending_withdrawals(from_block, current_block, config.eoa_address)
+        .get_pending_withdrawals(
+            BlockNumberOrTag::Number(from_block),
+            BlockNumberOrTag::Latest,
+            config.eoa_address,
+        )
         .await
         .expect("Failed to scan withdrawals");
 
-    println!("Found {} pending withdrawals in last 10k blocks", withdrawals.len());
+    println!(
+        "Found {} pending withdrawals in last 10k blocks",
+        withdrawals.len()
+    );
 
     // Print summary of statuses
     let mut initiated_count = 0;
@@ -107,10 +113,10 @@ async fn test_query_withdrawal_status() {
 
     // First, find some withdrawals
     let current_block = l2_provider.get_block_number().await.unwrap();
-    let from_block = current_block.saturating_sub(10_000);
+    let from_block = BlockNumberOrTag::Number(current_block.saturating_sub(9_990));
 
     let withdrawals = state_provider
-        .get_pending_withdrawals(from_block, current_block, config.eoa_address)
+        .get_pending_withdrawals(from_block, BlockNumberOrTag::Latest, config.eoa_address)
         .await
         .expect("Failed to scan withdrawals");
 
@@ -168,10 +174,10 @@ async fn test_is_finalized_check() {
 
     // Get some withdrawals
     let current_block = l2_provider.get_block_number().await.unwrap();
-    let from_block = current_block.saturating_sub(10_000);
+    let from_block = BlockNumberOrTag::Number(current_block.saturating_sub(9_990));
 
     let withdrawals = state_provider
-        .get_pending_withdrawals(from_block, current_block, config.eoa_address)
+        .get_pending_withdrawals(from_block, BlockNumberOrTag::Latest, config.eoa_address)
         .await
         .expect("Failed to scan withdrawals");
 
@@ -179,8 +185,9 @@ async fn test_is_finalized_check() {
         println!("⚠ No withdrawals found - checking random hash");
 
         // Check a random hash (should not be finalized)
-        let random_hash =
-            alloy_primitives::b256!("0000000000000000000000000000000000000000000000000000000000000001");
+        let random_hash = alloy_primitives::b256!(
+            "0000000000000000000000000000000000000000000000000000000000000001"
+        );
         let is_finalized = state_provider
             .is_finalized(random_hash)
             .await
@@ -229,10 +236,10 @@ async fn test_is_proven_check() {
 
     // Get some withdrawals
     let current_block = l2_provider.get_block_number().await.unwrap();
-    let from_block = current_block.saturating_sub(10_000);
+    let from_block = BlockNumberOrTag::Number(current_block.saturating_sub(9_990));
 
     let withdrawals = state_provider
-        .get_pending_withdrawals(from_block, current_block, config.eoa_address)
+        .get_pending_withdrawals(from_block, BlockNumberOrTag::Latest, config.eoa_address)
         .await
         .expect("Failed to scan withdrawals");
 
@@ -240,8 +247,9 @@ async fn test_is_proven_check() {
         println!("⚠ No withdrawals found - checking random hash");
 
         // Check a random hash (should not be proven)
-        let random_hash =
-            alloy_primitives::b256!("0000000000000000000000000000000000000000000000000000000000000001");
+        let random_hash = alloy_primitives::b256!(
+            "0000000000000000000000000000000000000000000000000000000000000001"
+        );
         let is_proven = state_provider
             .is_proven(random_hash, config.eoa_address)
             .await
