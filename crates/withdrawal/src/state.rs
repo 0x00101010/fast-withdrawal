@@ -9,7 +9,8 @@ use binding::opstack::{
     IL2ToL1MessagePasser, IOptimismPortal2, IOptimismPortal2::ProvenWithdrawal,
     WithdrawalTransaction,
 };
-use tracing::error;
+use tokio_retry::{strategy::ExponentialBackoff, Retry};
+use tracing::{debug, error, warn};
 
 #[allow(dead_code)]
 pub struct WithdrawalStateProvider<P1, P2> {
@@ -69,10 +70,120 @@ where
     ///
     /// Scans MessagePassed events and returns withdrawals that haven't been finalized,
     /// with their current status (Initiated or Proven).
+    ///
+    /// This method:
+    /// 1. Resolves `Latest` to concrete block numbers immediately (handles load balancer inconsistency)
+    /// 2. Chunks requests into 9,500 block ranges (with 500 block safety margin)
+    /// 3. Retries failed chunks with exponential backoff
+    ///
+    /// The safety margin and chunking handle RPC providers that may be slightly out of sync
+    /// when behind a load balancer.
     pub async fn get_pending_withdrawals(
         &self,
         from_block: BlockNumberOrTag,
         to_block: BlockNumberOrTag,
+        proof_submitter: Address,
+    ) -> eyre::Result<Vec<PendingWithdrawal>> {
+        // CRITICAL: Resolve both endpoints to concrete block numbers FIRST
+        // This creates a consistent snapshot and prevents load balancer issues
+        let from_block_num = self.resolve_block_number(from_block).await?;
+        let to_block_num = self.resolve_block_number(to_block).await?;
+
+        if from_block_num > to_block_num {
+            return Err(eyre::eyre!(
+                "from_block ({}) must be <= to_block ({})",
+                from_block_num,
+                to_block_num
+            ));
+        }
+
+        debug!(
+            from = from_block_num,
+            to = to_block_num,
+            "Scanning for withdrawals (snapshot taken)"
+        );
+
+        self.scan_chunks(from_block_num, to_block_num, proof_submitter)
+            .await
+    }
+
+    /// Resolve BlockNumberOrTag to a concrete block number.
+    async fn resolve_block_number(&self, block: BlockNumberOrTag) -> eyre::Result<u64> {
+        match block {
+            BlockNumberOrTag::Number(n) => Ok(n),
+            BlockNumberOrTag::Latest => {
+                let block_num = self.l2_provider.get_block_number().await?;
+                Ok(block_num)
+            }
+            _ => Err(eyre::eyre!("Unsupported block tag: {:?}", block)),
+        }
+    }
+
+    /// Scan blocks in chunks with retry logic.
+    async fn scan_chunks(
+        &self,
+        from_block: u64,
+        to_block: u64,
+        proof_submitter: Address,
+    ) -> eyre::Result<Vec<PendingWithdrawal>> {
+        // Use 9,500 block chunks (500 block safety margin for RPC limits)
+        const CHUNK_SIZE: u64 = 9_500;
+
+        let mut all_withdrawals = Vec::new();
+        let mut current = from_block;
+
+        while current <= to_block {
+            let chunk_end = (current + CHUNK_SIZE - 1).min(to_block);
+
+            debug!(
+                from = current,
+                to = chunk_end,
+                "Scanning chunk for withdrawals"
+            );
+
+            // Retry chunk with exponential backoff on failure
+            let chunk_withdrawals = self
+                .scan_chunk_with_retry(current, chunk_end, proof_submitter)
+                .await?;
+
+            all_withdrawals.extend(chunk_withdrawals);
+            current = chunk_end + 1;
+        }
+
+        Ok(all_withdrawals)
+    }
+
+    /// Scan a single chunk with retry and exponential backoff.
+    async fn scan_chunk_with_retry(
+        &self,
+        from_block: u64,
+        to_block: u64,
+        proof_submitter: Address,
+    ) -> eyre::Result<Vec<PendingWithdrawal>> {
+        // Exponential backoff: 100ms, 200ms, 400ms, 800ms, 1.6s (max 5 attempts)
+        let retry_strategy = ExponentialBackoff::from_millis(100).take(5);
+
+        Retry::spawn(retry_strategy, || async {
+            self.scan_chunk(from_block, to_block, proof_submitter)
+                .await
+                .map_err(|e| {
+                    warn!(
+                        from = from_block,
+                        to = to_block,
+                        error = %e,
+                        "Chunk scan failed, will retry"
+                    );
+                    e
+                })
+        })
+        .await
+    }
+
+    /// Scan a single chunk of blocks (no retry logic).
+    async fn scan_chunk(
+        &self,
+        from_block: u64,
+        to_block: u64,
         proof_submitter: Address,
     ) -> eyre::Result<Vec<PendingWithdrawal>> {
         let contract = IL2ToL1MessagePasser::new(self.message_passer_address, &self.l2_provider);

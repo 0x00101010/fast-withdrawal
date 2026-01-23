@@ -46,6 +46,7 @@ alloy-rpc-types-eth = { version = "1.4.3", default-features = false }
 
 # Async runtime
 tokio = { version = "1.49.0", default-features = false }
+tokio-retry = "0.3.0"
 async-trait = "0.1.89"
 
 # Error handling

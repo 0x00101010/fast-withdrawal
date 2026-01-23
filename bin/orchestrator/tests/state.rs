@@ -113,7 +113,7 @@ async fn test_query_withdrawal_status() {
 
     // First, find some withdrawals
     let current_block = l2_provider.get_block_number().await.unwrap();
-    let from_block = BlockNumberOrTag::Number(current_block.saturating_sub(9_990));
+    let from_block = BlockNumberOrTag::Number(current_block.saturating_sub(20_000));
 
     let withdrawals = state_provider
         .get_pending_withdrawals(from_block, BlockNumberOrTag::Latest, config.eoa_address)
