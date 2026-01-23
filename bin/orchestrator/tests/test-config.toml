@@ -11,3 +11,6 @@ l2_spoke_pool_address = "0x6999526e507Cc3b03b180BbE05E1Ff938259A874"
 # EOA address to query native balance
 # Can be any address (your wallet, a known contract, etc.)
 eoa_address = "0x5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"
+
+# L1 OptimismPortalProxy address
+l1_portal_address = "0x0d83dab629f0e0f9d36c0cbc89b69a489f0751bd"

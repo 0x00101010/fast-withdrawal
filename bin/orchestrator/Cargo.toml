@@ -16,6 +16,7 @@ client = { workspace = true }
 balance = { workspace = true }
 action = { workspace = true }
 config = { workspace = true }
+withdrawal = { workspace = true }
 
 alloy-provider = { workspace = true }
 alloy-primitives = { workspace = true }

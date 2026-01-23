@@ -41,6 +41,7 @@ sol! {
     #[sol(rpc)]
     interface IOptimismPortal2 {
         /// Proven withdrawal data stored on L1
+        #[derive(Debug)]
         struct ProvenWithdrawal {
             address disputeGameProxy;
             uint64 timestamp;

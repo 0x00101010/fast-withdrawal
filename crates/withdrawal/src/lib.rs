@@ -1,3 +1,3 @@
 pub mod hash;
-mod state;
+pub mod state;
 pub mod types;
