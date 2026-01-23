@@ -1,4 +1,4 @@
-use alloy_primitives::{Address, B256};
+use alloy_primitives::B256;
 
 pub type WithdrawalHash = B256;
 
@@ -7,9 +7,4 @@ pub enum WithdrawalStatus {
     Initiated,
     Proven { timestamp: u64 },
     Finalized,
-}
-
-pub struct ProvenWithdrawal {
-    pub dispute_game_proxy: Address,
-    pub timestamp: u64,
 }

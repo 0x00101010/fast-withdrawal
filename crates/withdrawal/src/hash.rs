@@ -16,6 +16,7 @@ pub fn compute_withdrawal_hash(tx: &WithdrawalTransaction) -> WithdrawalHash {
         &tx.data,
     )
         .abi_encode_sequence();
+
     keccak256(encoded)
 }
 
