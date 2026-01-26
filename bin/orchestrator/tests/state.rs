@@ -21,7 +21,7 @@ async fn test_state_provider_creation() {
     println!("Creating withdrawal state provider");
     println!("L1 RPC: {}", config.l1_rpc_url);
     println!("L2 RPC: {}", config.l2_rpc_url);
-    println!("L1 Portal: {}", config.l1_portal_address);
+    println!("L1 Portal: {}", config.network_config().unichain.l1_portal);
 
     let l1_provider = setup_provider(&config.l1_rpc_url).await;
     let l2_provider = setup_provider(&config.l2_rpc_url).await;
@@ -29,7 +29,7 @@ async fn test_state_provider_creation() {
     let _state_provider = WithdrawalStateProvider::new(
         l1_provider,
         l2_provider,
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -48,7 +48,7 @@ async fn test_scan_pending_withdrawals_larger_range() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider,
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -105,7 +105,7 @@ async fn test_query_withdrawal_status() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider,
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -166,7 +166,7 @@ async fn test_is_finalized_check() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider,
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -228,7 +228,7 @@ async fn test_is_proven_check() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider,
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 

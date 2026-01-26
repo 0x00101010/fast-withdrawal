@@ -59,9 +59,18 @@ pub struct UnichainConfig {
     pub weth: Address,
     /// Across SpokePool contract address
     pub spoke_pool: Address,
+    /// L2ToL1MessagePasser contract address (OP Stack predeploy)
+    pub l2_to_l1_message_passer: Address,
+    /// OptimismPortal2 contract address on L1 (for withdrawal proving/finalization)
+    pub l1_portal: Address,
+    /// DisputeGameFactory contract address on L1 (for finding dispute games)
+    pub l1_dispute_game_factory: Address,
     /// Block time in seconds (1 for Unichain)
     pub block_time_secs: u64,
 }
+
+/// L2ToL1MessagePasser predeploy address (same on all OP Stack chains).
+const MESSAGE_PASSER: Address = address!("4200000000000000000000000000000000000016");
 
 impl UnichainConfig {
     /// Unichain mainnet configuration.
@@ -71,6 +80,11 @@ impl UnichainConfig {
             weth: address!("0x4200000000000000000000000000000000000006"),
             // https://uniscan.xyz/address/0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64
             spoke_pool: address!("0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64"),
+            l2_to_l1_message_passer: MESSAGE_PASSER,
+            // OptimismPortalProxy on L1 for Unichain
+            l1_portal: address!("0x0bd48f6b86a26d3a217d0fa6ffe2b491b956a7a2"),
+            // DisputeGameFactory on L1 for Unichain
+            l1_dispute_game_factory: address!("0x2f12d621a16e2d3285929c9996f478508951dfe4"),
             block_time_secs: 1,
         }
     }
@@ -82,6 +96,11 @@ impl UnichainConfig {
             weth: address!("4200000000000000000000000000000000000006"),
             // https://uniscan.xyz/address/0x6999526e507Cc3b03b180BbE05E1Ff938259A874
             spoke_pool: address!("0x6999526e507Cc3b03b180BbE05E1Ff938259A874"),
+            l2_to_l1_message_passer: MESSAGE_PASSER,
+            // OptimismPortalProxy on L1 Sepolia for Unichain Sepolia
+            l1_portal: address!("0x0d83dab629f0e0f9d36c0cbc89b69a489f0751bd"),
+            // DisputeGameFactory on L1 Sepolia for Unichain Sepolia
+            l1_dispute_game_factory: address!("0xeff73e5aa3b9aec32c659aa3e00444d20a84394b"),
             block_time_secs: 1,
         }
     }

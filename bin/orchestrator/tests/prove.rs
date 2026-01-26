@@ -38,8 +38,11 @@ async fn test_prove_action_execute() {
     println!("Testing prove action execution");
     println!("L1 RPC: {}", config.l1_rpc_url);
     println!("L2 RPC: {}", config.l2_rpc_url);
-    println!("Portal: {}", config.l1_portal_address);
-    println!("Factory: {}", config.l1_dispute_game_factory_address);
+    println!("Portal: {}", config.network_config().unichain.l1_portal);
+    println!(
+        "Factory: {}",
+        config.network_config().unichain.l1_dispute_game_factory
+    );
     println!("EOA: {}", config.eoa_address);
 
     // Use wallet provider for L1 (needs to sign transactions)
@@ -50,7 +53,7 @@ async fn test_prove_action_execute() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider.clone(),
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -95,8 +98,8 @@ async fn test_prove_action_execute() {
 
     // Create prove action
     let prove = Prove {
-        portal_address: config.l1_portal_address,
-        factory_address: config.l1_dispute_game_factory_address,
+        portal_address: config.network_config().unichain.l1_portal,
+        factory_address: config.network_config().unichain.l1_dispute_game_factory,
         withdrawal: withdrawal.transaction.clone(),
         withdrawal_hash: withdrawal.hash,
         l2_block: withdrawal.l2_block,
@@ -164,7 +167,7 @@ async fn test_debug_output_root_proof() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider.clone(),
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -193,8 +196,8 @@ async fn test_debug_output_root_proof() {
     let proof_params = generate_proof(
         &l1_provider,
         &l2_provider,
-        config.l1_portal_address,
-        config.l1_dispute_game_factory_address,
+        config.network_config().unichain.l1_portal,
+        config.network_config().unichain.l1_dispute_game_factory,
         withdrawal.hash,
         withdrawal.transaction.clone(),
         withdrawal.l2_block,
@@ -236,7 +239,10 @@ async fn test_debug_output_root_proof() {
     println!("Dispute game index: {}", proof_params.dispute_game_index);
 
     // Get game address from factory
-    let factory = IDisputeGameFactory::new(config.l1_dispute_game_factory_address, &l1_provider);
+    let factory = IDisputeGameFactory::new(
+        config.network_config().unichain.l1_dispute_game_factory,
+        &l1_provider,
+    );
     let game_info = factory
         .gameAtIndex(proof_params.dispute_game_index)
         .call()

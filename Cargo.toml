@@ -38,7 +38,7 @@ withdrawal = { path = "crates/withdrawal" }
 alloy-provider = { version = "1.4.3", default-features = false }
 alloy-contract = { version = "1.4.3", default-features = false }
 alloy-sol-types = { version = "1.5.2", default-features = false }
-alloy-primitives = { version = "1.5.2", default-features = false }
+alloy-primitives = { version = "1.5.2", default-features = false, features = ["serde"] }
 alloy-signer = { version = "1.4.3", default-features = false }
 alloy-signer-local = { version = "1.4.3", default-features = false }
 alloy-network = { version = "1.4.3", default-features = false }

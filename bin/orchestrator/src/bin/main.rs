@@ -1,10 +1,9 @@
-use alloy_primitives::Address;
-use balance::monitor::BalanceMonitor;
-use config::NetworkConfig;
-use orchestrator::{check_l2_spoke_pool_balance, config::Config};
+use orchestrator::{
+    config::Config, maybe_deposit, maybe_initiate_withdrawal, process_pending_withdrawals,
+};
 use std::time::Duration;
 use tokio::time;
-use tracing::{error, info};
+use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -22,56 +21,45 @@ async fn main() -> eyre::Result<()> {
         .nth(1)
         .unwrap_or_else(|| "config.toml".to_string());
 
-    // Debug: print current directory and full path
-    let current_dir = std::env::current_dir()?;
-    info!("Current working directory: {:?}", current_dir);
-    info!("Loading config: {}", config_path);
-    info!("Full config path: {:?}", current_dir.join(&config_path));
-
     let config = Config::from_file(&config_path)?;
-    // TODO: make network configurable
-    let network_config = NetworkConfig::sepolia();
-    let spoke_pool = network_config.unichain.spoke_pool;
+    let network = config.network_config();
 
     info!("Loaded config:");
-    info!("  L1 RPC URL: {}", config.l1_rpc_url);
-    info!("  L2 RPC URL: {}", config.l2_rpc_url);
-    info!("  L2 SpokePool: {}", spoke_pool);
+    info!("  Network: {:?}", config.network);
+    info!("  L2 SpokePool: {}", network.unichain.spoke_pool);
+    info!("  L1 Portal: {}", network.unichain.l1_portal);
     info!("  EOA: {}", config.eoa_address);
+    info!("  Cycle interval: {}s", config.cycle_interval_secs);
 
-    // Create L1 provider and monitor
+    // Create providers
     info!("Connecting to L1...");
     let l1_provider = client::create_provider(&config.l1_rpc_url).await?;
-    let _l1_monitor = BalanceMonitor::new(l1_provider);
 
-    // Create L2 provider and monitor
+    info!("Connecting to L2...");
     let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
-    let l2_monitor = BalanceMonitor::new(l2_provider);
 
-    // TODO: (make interval configurable)
-    info!("Starting monitoring loop...");
+    info!("Starting main loop...");
 
-    let mut interval = time::interval(Duration::from_secs(30));
+    let mut interval = time::interval(Duration::from_secs(config.cycle_interval_secs));
 
     loop {
-        match check_l2_spoke_pool_balance(
-            &l2_monitor,
-            spoke_pool,
-            Address::ZERO, // ETH
-            config.eoa_address,
-        )
-        .await
+        interval.tick().await;
+
+        // 1. Process pending withdrawals (finalize + prove)
+        if let Err(e) =
+            process_pending_withdrawals(l1_provider.clone(), l2_provider.clone(), &config).await
         {
-            Ok(balance) => {
-                // TODO: add more complex strategy here.
-                info!("L2 Spoke Pool Balance: {} ETH", balance.amount);
-            }
-            Err(e) => {
-                error!("Failed to query L2 SpokePool balance: {}", e);
-                continue;
-            }
+            warn!(error = %e, "Failed to process pending withdrawals");
         }
 
-        interval.tick().await;
+        // 2. Maybe initiate new withdrawal (L2→L1)
+        if let Err(e) = maybe_initiate_withdrawal(l2_provider.clone(), &config).await {
+            warn!(error = %e, "Failed to check/initiate withdrawal");
+        }
+
+        // 3. Maybe deposit to L2 (L1→L2)
+        if let Err(e) = maybe_deposit(l1_provider.clone(), l2_provider.clone(), &config).await {
+            warn!(error = %e, "Failed to check/execute deposit");
+        }
     }
 }

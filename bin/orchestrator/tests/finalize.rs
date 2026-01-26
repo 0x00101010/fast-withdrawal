@@ -38,7 +38,7 @@ async fn test_finalize_action_execute() {
     println!("Testing finalize action execution");
     println!("L1 RPC: {}", config.l1_rpc_url);
     println!("L2 RPC: {}", config.l2_rpc_url);
-    println!("Portal: {}", config.l1_portal_address);
+    println!("Portal: {}", config.network_config().unichain.l1_portal);
     println!("EOA: {}", config.eoa_address);
 
     // Use wallet provider for L1 (needs to sign transactions)
@@ -49,7 +49,7 @@ async fn test_finalize_action_execute() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider.clone(),
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -100,7 +100,7 @@ async fn test_finalize_action_execute() {
 
     // Create finalize action
     let finalize = Finalize {
-        portal_address: config.l1_portal_address,
+        portal_address: config.network_config().unichain.l1_portal,
         withdrawal: withdrawal.transaction.clone(),
         withdrawal_hash: withdrawal.hash,
         proof_submitter: config.eoa_address, // Assuming we proved it ourselves
@@ -170,7 +170,7 @@ async fn test_check_proven_withdrawal_status() {
     let state_provider = WithdrawalStateProvider::new(
         l1_provider.clone(),
         l2_provider.clone(),
-        config.l1_portal_address,
+        config.network_config().unichain.l1_portal,
         MESSAGE_PASSER_ADDRESS,
     );
 
@@ -189,7 +189,10 @@ async fn test_check_proven_withdrawal_status() {
     println!("Found {} pending withdrawals", withdrawals.len());
 
     // Get proof maturity delay
-    let portal = binding::opstack::IOptimismPortal2::new(config.l1_portal_address, &l1_provider);
+    let portal = binding::opstack::IOptimismPortal2::new(
+        config.network_config().unichain.l1_portal,
+        &l1_provider,
+    );
     let maturity_delay: alloy_primitives::U256 =
         portal.proofMaturityDelaySeconds().call().await.unwrap();
     let maturity_delay_secs: u64 = maturity_delay.try_into().unwrap_or(u64::MAX);
