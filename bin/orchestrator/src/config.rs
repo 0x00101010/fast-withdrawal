@@ -11,9 +11,6 @@ pub struct Config {
     /// L2 RPC endpoint url
     pub l2_rpc_url: String,
 
-    /// L2 spoke pool address
-    pub l2_spoke_pool_address: Address,
-
     /// L1 OptimismPortal2 address (for withdrawal proving/finalization)
     pub l1_portal_address: Address,
 

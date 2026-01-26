@@ -1,5 +1,6 @@
 use alloy_primitives::Address;
 use balance::monitor::BalanceMonitor;
+use config::NetworkConfig;
 use orchestrator::{check_l2_spoke_pool_balance, config::Config};
 use std::time::Duration;
 use tokio::time;
@@ -28,11 +29,14 @@ async fn main() -> eyre::Result<()> {
     info!("Full config path: {:?}", current_dir.join(&config_path));
 
     let config = Config::from_file(&config_path)?;
+    // TODO: make network configurable
+    let network_config = NetworkConfig::sepolia();
+    let spoke_pool = network_config.unichain.spoke_pool;
 
     info!("Loaded config:");
     info!("  L1 RPC URL: {}", config.l1_rpc_url);
     info!("  L2 RPC URL: {}", config.l2_rpc_url);
-    info!("  L2 SpokePool: {}", config.l2_spoke_pool_address);
+    info!("  L2 SpokePool: {}", spoke_pool);
     info!("  EOA: {}", config.eoa_address);
 
     // Create L1 provider and monitor
@@ -52,7 +56,7 @@ async fn main() -> eyre::Result<()> {
     loop {
         match check_l2_spoke_pool_balance(
             &l2_monitor,
-            config.l2_spoke_pool_address,
+            spoke_pool,
             Address::ZERO, // ETH
             config.eoa_address,
         )

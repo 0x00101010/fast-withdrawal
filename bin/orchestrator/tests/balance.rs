@@ -13,6 +13,7 @@ mod setup;
 
 use alloy_primitives::{Address, U256};
 use balance::{monitor::BalanceMonitor, Monitor};
+use config::NetworkConfig;
 use orchestrator::{check_l1_native_balance, check_l2_spoke_pool_balance};
 use setup::load_test_config;
 
@@ -48,13 +49,15 @@ async fn test_l1_native_balance_query() {
 #[tokio::test]
 async fn test_l2_spokepool_balance_query() {
     let config = load_test_config();
+    let network_config = NetworkConfig::sepolia();
 
     // Using zero address as token for now - update config to add token field if needed
     let token = Address::ZERO;
+    let spoke_pool = network_config.unichain.spoke_pool;
 
     println!("Testing L2 SpokePool balance query");
     println!("L2 RPC: {}", config.l2_rpc_url);
-    println!("SpokePool: {}", config.l2_spoke_pool_address);
+    println!("SpokePool: {}", spoke_pool);
     println!("Token: {}", token);
     println!("Relayer: {}", config.eoa_address);
 
@@ -66,17 +69,12 @@ async fn test_l2_spokepool_balance_query() {
     let monitor = BalanceMonitor::new(provider);
 
     // Query balance
-    let result = check_l2_spoke_pool_balance(
-        &monitor,
-        config.l2_spoke_pool_address,
-        token,
-        config.eoa_address,
-    )
-    .await
-    .expect("Failed to query L2 SpokePool balance");
+    let result = check_l2_spoke_pool_balance(&monitor, spoke_pool, token, config.eoa_address)
+        .await
+        .expect("Failed to query L2 SpokePool balance");
 
     println!("✓ L2 SpokePool Balance:");
-    println!("  SpokePool: {}", config.l2_spoke_pool_address);
+    println!("  SpokePool: {}", spoke_pool);
     println!("  Token: {}", result.asset);
     println!("  Relayer: {}", result.holder);
     println!("  Balance: {}", result.amount);
@@ -90,6 +88,7 @@ async fn test_l2_spokepool_balance_query() {
 #[tokio::test]
 async fn test_both_chains_integration() {
     let config = load_test_config();
+    let network_config = NetworkConfig::sepolia();
 
     println!("Testing full integration with both L1 and L2");
 
@@ -114,7 +113,7 @@ async fn test_both_chains_integration() {
 
     let l2_result = check_l2_spoke_pool_balance(
         &l2_monitor,
-        config.l2_spoke_pool_address,
+        network_config.unichain.spoke_pool,
         token,
         config.eoa_address,
     )
@@ -133,13 +132,15 @@ async fn test_both_chains_integration() {
 #[tokio::test]
 async fn test_l2_spoke_pool_weth_balance() {
     let config = load_test_config();
+    let network_config = NetworkConfig::sepolia();
 
     // Unichain Sepolia WETH address (OP Stack predeploy)
-    let weth_address = config::network::UnichainConfig::sepolia().weth;
+    let weth_address = network_config.unichain.weth;
+    let spoke_pool = network_config.unichain.spoke_pool;
 
     println!("Testing L2 SpokePool total WETH balance query");
     println!("L2 RPC: {}", config.l2_rpc_url);
-    println!("SpokePool: {}", config.l2_spoke_pool_address);
+    println!("SpokePool: {}", spoke_pool);
     println!("WETH Token: {}", weth_address);
 
     // Create provider and monitor
@@ -154,7 +155,7 @@ async fn test_l2_spoke_pool_weth_balance() {
     let result = monitor
         .query_balance(BalanceQuery::ERC20Balance {
             token: weth_address,
-            holder: config.l2_spoke_pool_address,
+            holder: spoke_pool,
         })
         .await
         .expect("Failed to query SpokePool WETH balance");
@@ -169,7 +170,7 @@ async fn test_l2_spoke_pool_weth_balance() {
     println!("  Balance (ETH): {} WETH", balance_eth);
 
     // Assertions
-    assert_eq!(result.holder, config.l2_spoke_pool_address);
+    assert_eq!(result.holder, spoke_pool);
     assert_eq!(result.asset, weth_address);
     assert!(result.amount > U256::ZERO);
 }
