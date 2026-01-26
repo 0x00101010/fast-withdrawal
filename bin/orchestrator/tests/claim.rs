@@ -9,9 +9,7 @@ use alloy_primitives::Address;
 use config::NetworkConfig;
 use setup::{load_test_config, setup_provider};
 
-const fn create_claim(relayer: Address) -> Claim {
-    let network_config = NetworkConfig::sepolia();
-
+const fn create_claim(relayer: Address, network_config: &NetworkConfig) -> Claim {
     Claim {
         spoke_pool: network_config.unichain.spoke_pool,
         token: network_config.unichain.weth,
@@ -23,7 +21,8 @@ const fn create_claim(relayer: Address) -> Claim {
 #[tokio::test]
 async fn test_get_claimable_balance() -> eyre::Result<()> {
     let config = load_test_config();
-    let claim = create_claim(config.eoa_address);
+    let network_config = config.network_config();
+    let claim = create_claim(config.eoa_address, &network_config);
 
     println!("\n=== Claim Test Configuration ===");
     println!("L2 RPC URL: {}", config.l2_rpc_url);

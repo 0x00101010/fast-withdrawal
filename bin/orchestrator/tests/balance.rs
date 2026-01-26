@@ -13,7 +13,6 @@ mod setup;
 
 use alloy_primitives::{Address, U256};
 use balance::{monitor::BalanceMonitor, Monitor};
-use config::NetworkConfig;
 use orchestrator::{check_l1_native_balance, check_l2_spoke_pool_balance};
 use setup::load_test_config;
 
@@ -49,7 +48,7 @@ async fn test_l1_native_balance_query() {
 #[tokio::test]
 async fn test_l2_spokepool_balance_query() {
     let config = load_test_config();
-    let network_config = NetworkConfig::sepolia();
+    let network_config = config.network_config();
 
     // Using zero address as token for now - update config to add token field if needed
     let token = Address::ZERO;
@@ -88,7 +87,7 @@ async fn test_l2_spokepool_balance_query() {
 #[tokio::test]
 async fn test_both_chains_integration() {
     let config = load_test_config();
-    let network_config = NetworkConfig::sepolia();
+    let network_config = config.network_config();
 
     println!("Testing full integration with both L1 and L2");
 
@@ -132,9 +131,9 @@ async fn test_both_chains_integration() {
 #[tokio::test]
 async fn test_l2_spoke_pool_weth_balance() {
     let config = load_test_config();
-    let network_config = NetworkConfig::sepolia();
+    let network_config = config.network_config();
 
-    // Unichain Sepolia WETH address (OP Stack predeploy)
+    // Unichain WETH address (OP Stack predeploy)
     let weth_address = network_config.unichain.weth;
     let spoke_pool = network_config.unichain.spoke_pool;
 

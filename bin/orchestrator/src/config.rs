@@ -45,6 +45,10 @@ pub struct Config {
     /// How often to run the main loop (in seconds).
     #[serde(default = "default_cycle_interval_secs")]
     pub cycle_interval_secs: u64,
+
+    /// Dry-run mode: log actions without executing transactions.
+    #[serde(default)]
+    pub dry_run: bool,
 }
 
 const fn default_deposit_lookback_secs() -> u64 {

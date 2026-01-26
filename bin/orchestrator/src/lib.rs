@@ -103,6 +103,7 @@ where
                     network.unichain.l1_portal,
                     config.eoa_address,
                     withdrawal,
+                    config.dry_run,
                 )
                 .await
                 {
@@ -120,6 +121,7 @@ where
                     network.unichain.l1_portal,
                     network.unichain.l1_dispute_game_factory,
                     withdrawal,
+                    config.dry_run,
                 )
                 .await
                 {
@@ -146,6 +148,7 @@ async fn finalize_withdrawal<P1, P2>(
     portal_address: Address,
     proof_submitter: Address,
     withdrawal: &PendingWithdrawal,
+    dry_run: bool,
 ) -> eyre::Result<()>
 where
     P1: Provider + Clone,
@@ -164,6 +167,14 @@ where
         info!(
             withdrawal_hash = %withdrawal.hash,
             "Withdrawal not ready to finalize (proof not mature)"
+        );
+        return Ok(());
+    }
+
+    if dry_run {
+        info!(
+            withdrawal_hash = %withdrawal.hash,
+            "[DRY-RUN] Would finalize withdrawal"
         );
         return Ok(());
     }
@@ -198,6 +209,7 @@ async fn prove_withdrawal<P1, P2>(
     portal_address: Address,
     factory_address: Address,
     withdrawal: &PendingWithdrawal,
+    dry_run: bool,
 ) -> eyre::Result<()>
 where
     P1: Provider + Clone,
@@ -217,6 +229,14 @@ where
         info!(
             withdrawal_hash = %withdrawal.hash,
             "Withdrawal already proven"
+        );
+        return Ok(());
+    }
+
+    if dry_run {
+        info!(
+            withdrawal_hash = %withdrawal.hash,
+            "[DRY-RUN] Would prove withdrawal"
         );
         return Ok(());
     }
@@ -272,6 +292,15 @@ where
     if withdrawal_amount == U256::ZERO {
         info!("Nothing to withdraw after gas buffer");
         return Ok(None);
+    }
+
+    if config.dry_run {
+        info!(
+            balance = %format_ether(balance),
+            withdrawal_amount = %format_ether(withdrawal_amount),
+            "[DRY-RUN] Would initiate L2→L1 withdrawal"
+        );
+        return Ok(Some(withdrawal_amount));
     }
 
     info!(
@@ -386,6 +415,14 @@ where
             "Insufficient L1 balance for deposit"
         );
         return Ok(None);
+    }
+
+    if config.dry_run {
+        info!(
+            deposit_amount = %format_ether(deposit_amount),
+            "[DRY-RUN] Would execute deposit"
+        );
+        return Ok(Some(deposit_amount));
     }
 
     info!(

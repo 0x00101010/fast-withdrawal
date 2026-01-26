@@ -31,7 +31,7 @@ alloy-signer-local = { workspace = true }
 alloy-network = { workspace = true }
 alloy-rpc-types-eth.workspace = true
 
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs", "signal"] }
 
 eyre = { workspace = true }
 

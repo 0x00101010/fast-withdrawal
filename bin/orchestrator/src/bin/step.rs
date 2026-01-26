@@ -23,6 +23,10 @@ struct Cli {
     #[arg(short = 'k', long, env = "PRIVATE_KEY")]
     private_key: String,
 
+    /// Dry-run mode: log actions without executing transactions
+    #[arg(long)]
+    dry_run: bool,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -49,7 +53,13 @@ async fn main() -> eyre::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let config = Config::from_file(&cli.config)?;
+    let mut config = Config::from_file(&cli.config)?;
+
+    // Override dry_run from CLI flag
+    if cli.dry_run {
+        config.dry_run = true;
+    }
+
     let network = config.network_config();
 
     info!("Loaded config:");
@@ -57,15 +67,16 @@ async fn main() -> eyre::Result<()> {
     info!("  L2 SpokePool: {}", network.unichain.spoke_pool);
     info!("  L1 Portal: {}", network.unichain.l1_portal);
     info!("  EOA: {}", config.eoa_address);
+    if config.dry_run {
+        info!("  Mode: DRY-RUN (no transactions will be executed)");
+    }
 
     match cli.command {
         Command::ProcessWithdrawals => {
             info!("Running: process-withdrawals");
 
-            let l1_provider =
-                client::create_wallet_provider(&config.l1_rpc_url, &cli.private_key)?;
-            let l2_provider =
-                client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
+            let l1_provider = client::create_wallet_provider(&config.l1_rpc_url, &cli.private_key)?;
+            let l2_provider = client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
 
             process_pending_withdrawals(l1_provider, l2_provider, &config).await?;
 
@@ -74,8 +85,7 @@ async fn main() -> eyre::Result<()> {
         Command::InitiateWithdrawal => {
             info!("Running: initiate-withdrawal");
 
-            let l2_provider =
-                client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
+            let l2_provider = client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
 
             let result = maybe_initiate_withdrawal(l2_provider, &config).await?;
 
@@ -93,10 +103,8 @@ async fn main() -> eyre::Result<()> {
         Command::Deposit => {
             info!("Running: deposit");
 
-            let l1_provider =
-                client::create_wallet_provider(&config.l1_rpc_url, &cli.private_key)?;
-            let l2_provider =
-                client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
+            let l1_provider = client::create_wallet_provider(&config.l1_rpc_url, &cli.private_key)?;
+            let l2_provider = client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
 
             let result = maybe_deposit(l1_provider, l2_provider, &config).await?;
 

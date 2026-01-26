@@ -14,14 +14,13 @@
 mod setup;
 
 use alloy_provider::Provider;
-use config::NetworkConfig;
 use deposit::{get_inflight_deposit_total, get_inflight_deposits, DepositStateProvider};
 use setup::{load_test_config, setup_provider};
 
 #[tokio::test]
 async fn test_deposit_state_provider_creation() {
     let config = load_test_config();
-    let network = NetworkConfig::sepolia();
+    let network = config.network_config();
 
     println!("Creating deposit state provider");
     println!("L1 RPC: {}", config.l1_rpc_url);
@@ -45,7 +44,7 @@ async fn test_deposit_state_provider_creation() {
 #[tokio::test]
 async fn test_get_inflight_deposits_no_deposits() {
     let config = load_test_config();
-    let network = NetworkConfig::sepolia();
+    let network = config.network_config();
 
     println!("Testing in-flight deposit scan with no expected deposits");
 
@@ -82,7 +81,7 @@ async fn test_get_inflight_deposits_no_deposits() {
 #[tokio::test]
 async fn test_get_inflight_deposits_scan() {
     let config = load_test_config();
-    let network = NetworkConfig::sepolia();
+    let network = config.network_config();
 
     println!("Testing in-flight deposit scan for configured EOA");
     println!("EOA: {}", config.eoa_address);
@@ -140,7 +139,7 @@ async fn test_get_inflight_deposits_scan() {
 #[tokio::test]
 async fn test_get_inflight_deposit_total() {
     let config = load_test_config();
-    let network = NetworkConfig::sepolia();
+    let network = config.network_config();
 
     println!("Testing in-flight deposit total calculation");
 
@@ -173,7 +172,8 @@ async fn test_get_inflight_deposit_total() {
 
 #[tokio::test]
 async fn test_lookback_calculation() {
-    let network = NetworkConfig::sepolia();
+    let config = load_test_config();
+    let network = config.network_config();
 
     println!("Testing lookback calculation");
 
@@ -203,7 +203,7 @@ async fn test_lookback_calculation() {
 #[ignore = "slow test - scans large block range"]
 async fn test_long_lookback_scan_slow() {
     let config = load_test_config();
-    let network = NetworkConfig::sepolia();
+    let network = config.network_config();
 
     println!("Testing long lookback scan (24 hours)");
 

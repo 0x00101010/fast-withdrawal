@@ -1,6 +1,6 @@
 //! Integration tests for deposit actions.
 //!
-//! Tests deposit functionality using Sepolia testnet configuration.
+//! Tests deposit functionality using the configured network.
 //!
 //! Run with:
 //! ```bash
@@ -17,10 +17,8 @@ use alloy_primitives::{Address, Bytes, U256};
 use config::NetworkConfig;
 use setup::{load_test_config, setup_provider, setup_wallet_provider};
 
-/// Helper to create a test deposit config for Ethereum Sepolia -> Unichain Sepolia
-fn create_test_deposit_config(depositor: Address) -> DepositConfig {
-    let network_config = NetworkConfig::sepolia();
-
+/// Helper to create a test deposit config for Ethereum -> Unichain
+fn create_test_deposit_config(depositor: Address, network_config: &NetworkConfig) -> DepositConfig {
     // Use small amounts for testing
     let input_amount = U256::from(1_000_000); // 1M wei = 0.000001 ETH (very small amount)
     let output_amount = U256::from(2_000_000); // Make it higher than input amount which will guarantee slow fill.
@@ -52,10 +50,10 @@ fn create_test_deposit_config(depositor: Address) -> DepositConfig {
 #[tokio::test]
 async fn test_deposit_action_creation() {
     let config = load_test_config();
-    let network_config = NetworkConfig::sepolia();
+    let network_config = config.network_config();
 
     println!("Testing deposit action creation");
-    println!("Network: Sepolia");
+    println!("Network: {:?}", network_config.network_type);
     println!("Ethereum SpokePool: {}", network_config.ethereum.spoke_pool);
     println!("Destination Chain ID: {}", network_config.unichain.chain_id);
     println!("Test Depositor: {}", config.eoa_address);
@@ -63,7 +61,7 @@ async fn test_deposit_action_creation() {
     let provider = setup_provider(&config.l1_rpc_url).await;
 
     // Create deposit config
-    let deposit_config = create_test_deposit_config(config.eoa_address);
+    let deposit_config = create_test_deposit_config(config.eoa_address, &network_config);
 
     // Create deposit action
     let action = DepositAction::new(provider, deposit_config);
@@ -79,12 +77,13 @@ async fn test_deposit_action_creation() {
 #[tokio::test]
 async fn test_deposit_action_validation() {
     let config = load_test_config();
+    let network_config = config.network_config();
     let provider = setup_provider(&config.l1_rpc_url).await;
 
     println!("Testing deposit action validation");
 
     // Test invalid config: zero spoke pool
-    let mut invalid_config = create_test_deposit_config(config.eoa_address);
+    let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.spoke_pool = Address::ZERO;
 
     let action = DepositAction::new(provider.clone(), invalid_config);
@@ -94,7 +93,7 @@ async fn test_deposit_action_validation() {
     );
 
     // Test invalid config: zero recipient
-    let mut invalid_config = create_test_deposit_config(config.eoa_address);
+    let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.recipient = Address::ZERO;
 
     let action = DepositAction::new(provider.clone(), invalid_config);
@@ -104,7 +103,7 @@ async fn test_deposit_action_validation() {
     );
 
     // Test invalid config: zero amount
-    let mut invalid_config = create_test_deposit_config(config.eoa_address);
+    let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.input_amount = U256::ZERO;
 
     let action = DepositAction::new(provider.clone(), invalid_config);
@@ -114,7 +113,7 @@ async fn test_deposit_action_validation() {
     );
 
     // Test invalid config: output > input
-    let mut invalid_config = create_test_deposit_config(config.eoa_address);
+    let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.input_amount = U256::from(100);
     invalid_config.output_amount = U256::from(90);
 
@@ -130,12 +129,13 @@ async fn test_deposit_action_validation() {
 #[tokio::test]
 async fn test_deposit_action_description() {
     let config = load_test_config();
+    let network_config = config.network_config();
     let provider = setup_provider(&config.l1_rpc_url).await;
 
     println!("Testing deposit action description");
 
     // Create deposit config
-    let deposit_config = create_test_deposit_config(config.eoa_address);
+    let deposit_config = create_test_deposit_config(config.eoa_address, &network_config);
     let dest_chain = deposit_config.destination_chain_id;
 
     // Create deposit action
@@ -153,12 +153,13 @@ async fn test_deposit_action_description() {
 #[tokio::test]
 async fn test_deposit_action_is_completed() {
     let config = load_test_config();
+    let network_config = config.network_config();
     let provider = setup_provider(&config.l1_rpc_url).await;
 
     println!("Testing deposit action is_completed check");
 
     // Create deposit config
-    let deposit_config = create_test_deposit_config(config.eoa_address);
+    let deposit_config = create_test_deposit_config(config.eoa_address, &network_config);
 
     // Create deposit action
     let action = DepositAction::new(provider, deposit_config);
@@ -179,6 +180,7 @@ async fn test_deposit_action_is_completed() {
 #[ignore = "requires real funds and submits actual transaction - run with: just test-ignored"]
 async fn test_deposit_action_execute() {
     let config = load_test_config();
+    let network_config = config.network_config();
 
     println!("⚠️  WARNING: This test will execute a REAL deposit transaction!");
     println!("Setting up wallet provider for transaction signing...");
@@ -190,7 +192,7 @@ async fn test_deposit_action_execute() {
     println!("Make sure the depositor has sufficient ETH for the deposit + gas");
 
     // Create deposit config
-    let deposit_config = create_test_deposit_config(config.eoa_address);
+    let deposit_config = create_test_deposit_config(config.eoa_address, &network_config);
 
     println!("\nDeposit Details:");
     println!("  SpokePool: {}", deposit_config.spoke_pool);
