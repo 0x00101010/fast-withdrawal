@@ -17,6 +17,7 @@ balance = { workspace = true }
 action = { workspace = true }
 binding = { workspace = true }
 config = { workspace = true }
+deposit = { workspace = true }
 withdrawal = { workspace = true }
 
 alloy-provider = { workspace = true }

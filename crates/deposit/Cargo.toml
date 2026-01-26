@@ -1,0 +1,19 @@
+[package]
+name = "deposit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+binding.workspace = true
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
+alloy-contract.workspace = true
+alloy-provider.workspace = true
+alloy-rpc-types-eth.workspace = true
+eyre.workspace = true
+tracing.workspace = true
+tokio-retry.workspace = true
+
+[lints]
+workspace = true

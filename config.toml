@@ -4,10 +4,6 @@ l1_rpc_url = "https://ethereum-rpc.publicnode.com"
 # L2 RPC endpoint
 l2_rpc_url = "https://mainnet.unichain.org"
 
-# L2 SpokePool contract address
-# Find current addresses at: https://docs.across.to/reference/contract-addresses
-l2_spoke_pool_address = "0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64"
-
 # EOA address to query native balance
 # Can be any address (your wallet, a known contract, etc.)
 eoa_address = "0x5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"
@@ -17,3 +13,7 @@ l1_portal_address = "0x0bd48f6b86a26d3a217d0fa6ffe2b491b956a7a2"
 
 # L1 DisputeGameFactory Address
 l1_dispute_game_factory_address = "0x2f12d621a16e2d3285929c9996f478508951dfe4"
+
+# How far back to scan for in-flight deposits (in seconds)
+# Default: 43200 (12 hours)
+# deposit_lookback_secs = 43200

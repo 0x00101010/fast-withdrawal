@@ -7,6 +7,7 @@ members = [
     "crates/binding",
     "crates/client",
     "crates/config",
+    "crates/deposit",
     "crates/withdrawal",
 ]
 
@@ -30,6 +31,7 @@ balance = { path = "crates/balance" }
 binding = { path = "crates/binding" }
 client = { path = "crates/client" }
 config = { path = "crates/config" }
+deposit = { path = "crates/deposit" }
 withdrawal = { path = "crates/withdrawal" }
 
 # Ethereum

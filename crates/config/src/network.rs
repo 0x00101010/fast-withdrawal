@@ -22,6 +22,8 @@ pub struct EthereumConfig {
     pub weth: Address,
     /// Across SpokePool contract address
     pub spoke_pool: Address,
+    /// Block time in seconds (12 for Ethereum mainnet)
+    pub block_time_secs: u64,
 }
 
 impl EthereumConfig {
@@ -32,6 +34,7 @@ impl EthereumConfig {
             weth: address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"),
             // https://etherscan.io/address/0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5
             spoke_pool: address!("0x5c7BCd6E7De5423a257D81B442095A1a6ced35C5"),
+            block_time_secs: 12,
         }
     }
 
@@ -42,6 +45,7 @@ impl EthereumConfig {
             weth: address!("0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14"),
             // https://sepolia.etherscan.io/address/0x5ef6C01E11889d86803e0B23e3cB3F9E9d97B662
             spoke_pool: address!("0x5ef6C01E11889d86803e0B23e3cB3F9E9d97B662"),
+            block_time_secs: 12,
         }
     }
 }
@@ -55,6 +59,8 @@ pub struct UnichainConfig {
     pub weth: Address,
     /// Across SpokePool contract address
     pub spoke_pool: Address,
+    /// Block time in seconds (1 for Unichain)
+    pub block_time_secs: u64,
 }
 
 impl UnichainConfig {
@@ -65,6 +71,7 @@ impl UnichainConfig {
             weth: address!("0x4200000000000000000000000000000000000006"),
             // https://uniscan.xyz/address/0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64
             spoke_pool: address!("0x09aea4b2242abC8bb4BB78D537A67a245A7bEC64"),
+            block_time_secs: 1,
         }
     }
 
@@ -75,6 +82,7 @@ impl UnichainConfig {
             weth: address!("4200000000000000000000000000000000000006"),
             // https://uniscan.xyz/address/0x6999526e507Cc3b03b180BbE05E1Ff938259A874
             spoke_pool: address!("0x6999526e507Cc3b03b180BbE05E1Ff938259A874"),
+            block_time_secs: 1,
         }
     }
 }

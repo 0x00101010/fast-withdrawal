@@ -53,6 +53,9 @@ run-prove:
 run-finalize:
     cargo nextest run --package orchestrator --test finalize --run-ignored ignored-only test_finalize_action_execute
 
+check-inflight-deposits:
+    cargo nextest run --package orchestrator --test inflight --run-ignored ignored-only test_long_lookback_scan_slow
+
 # Fix all auto-fixable issues
 fix: fix-fmt clippy-fix
 
