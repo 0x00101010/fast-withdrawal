@@ -1,12 +1,63 @@
+# =============================================================================
+# Fast-Withdrawal Orchestrator Configuration (Testnet)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Network Configuration
+# -----------------------------------------------------------------------------
+
 # L1 RPC endpoint (Ethereum Sepolia)
 l1_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com"
 
-# L2 RPC endpoint (Base Sepolia or Optimism Sepolia)
+# L2 RPC endpoint (Unichain Sepolia)
 l2_rpc_url = "https://sepolia.unichain.org"
 
 # Network type: "Mainnet" or "Testnet"
 network = "Testnet"
 
-# EOA address to query native balance
-# Can be any address (your wallet, a known contract, etc.)
+# EOA address (operator wallet)
 eoa_address = "0x5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"
+
+# -----------------------------------------------------------------------------
+# Deposit Configuration (L1 → L2)
+# -----------------------------------------------------------------------------
+
+# Trigger deposit when L2 SpokePool balance exceeds this value (in wei)
+# Default: 75 ETH
+spoke_pool_target_wei = "75000000000000000000"
+
+# Minimum to leave in L2 SpokePool after deposit (in wei)
+# Default: 20 ETH
+spoke_pool_floor_wei = "20000000000000000000"
+
+# How far back to scan for in-flight deposits (in seconds)
+# Default: 43200 (12 hours)
+deposit_lookback_secs = 43200
+
+# -----------------------------------------------------------------------------
+# Withdrawal Configuration (L2 → L1)
+# -----------------------------------------------------------------------------
+
+# Trigger L2→L1 withdrawal when L2 EOA balance exceeds this value (in wei)
+# Default: 75 ETH
+withdrawal_threshold_wei = "75000000000000000000"
+
+# Leave this much ETH on L2 EOA for gas (in wei)
+# Default: 0.01 ETH
+gas_buffer_wei = "10000000000000000"
+
+# How far back to scan for pending withdrawals (in seconds)
+# Default: 1209600 (2 weeks)
+withdrawal_lookback_secs = 1209600
+
+# -----------------------------------------------------------------------------
+# Main Loop Configuration
+# -----------------------------------------------------------------------------
+
+# How often to run the main loop (in seconds)
+# Default: 30
+cycle_interval_secs = 120
+
+# Dry-run mode: log actions without executing transactions
+# Default: false
+dry_run = false

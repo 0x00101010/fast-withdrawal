@@ -1,3 +1,4 @@
+use clap::Parser;
 use orchestrator::{
     config::Config, maybe_deposit, maybe_initiate_withdrawal, process_pending_withdrawals,
 };
@@ -10,6 +11,19 @@ use std::{
 };
 use tokio::time;
 use tracing::{info, warn};
+
+#[derive(Parser)]
+#[command(name = "orchestrator")]
+#[command(about = "Fast-withdrawal orchestrator for Unichain")]
+struct Cli {
+    /// Path to the configuration file
+    #[arg(short, long, default_value = "config.toml")]
+    config: String,
+
+    /// Dry-run mode: log actions without executing transactions
+    #[arg(long)]
+    dry_run: bool,
+}
 
 /// Result status for a cycle step
 #[derive(Debug, Clone, Copy)]
@@ -50,14 +64,16 @@ async fn main() -> eyre::Result<()> {
         )
         .init();
 
+    let cli = Cli::parse();
+
     info!("Starting Orchestrator");
 
-    // TODO: use proper cli lib
-    let config_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "config.toml".to_string());
+    let mut config = Config::from_file(&cli.config)?;
 
-    let config = Config::from_file(&config_path)?;
+    // Override dry_run from CLI flag
+    if cli.dry_run {
+        config.dry_run = true;
+    }
     let network = config.network_config();
 
     info!("Loaded config:");
@@ -103,7 +119,25 @@ async fn main() -> eyre::Result<()> {
     let mut metrics = CycleMetrics::default();
 
     loop {
-        interval.tick().await;
+        // Wait for next tick OR shutdown signal
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = async {
+                while !shutdown_requested.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            } => {
+                info!("Shutdown signal received, exiting immediately");
+                break;
+            }
+        }
+
+        // Check again in case we woke up from interval but shutdown was requested
+        if shutdown_requested.load(Ordering::SeqCst) {
+            info!("Shutdown signal received, exiting immediately");
+            break;
+        }
+
         cycle_number += 1;
         let cycle_start = Instant::now();
 
