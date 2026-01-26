@@ -11,6 +11,10 @@ workspace = true
 name = "orchestrator"
 path = "src/bin/main.rs"
 
+[[bin]]
+name = "step"
+path = "src/bin/step.rs"
+
 [dependencies]
 client = { workspace = true }
 balance = { workspace = true }
@@ -36,3 +40,4 @@ toml = { workspace = true }
 
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
