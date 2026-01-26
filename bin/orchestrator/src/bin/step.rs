@@ -24,7 +24,7 @@ struct Cli {
     private_key: String,
 
     /// Dry-run mode: log actions without executing transactions
-    #[arg(long)]
+    #[arg(long, env = "DRY_RUN")]
     dry_run: bool,
 
     #[command(subcommand)]

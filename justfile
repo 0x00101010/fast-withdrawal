@@ -53,6 +53,18 @@ run-prove:
 run-finalize:
     cargo nextest run --package orchestrator --test finalize --run-ignored ignored-only test_finalize_action_execute
 
+# Run step: process pending withdrawals (prove + finalize)
+step-process-withdrawals:
+    cargo run --bin step -- -k "$PRIVATE_KEY" --config ./config.test.toml process-withdrawals
+
+# Run step: initiate L2→L1 withdrawal if threshold met
+step-initiate-withdrawal:
+    cargo run --bin step -- -k "$PRIVATE_KEY" --config ./config.test.toml initiate-withdrawal
+
+# Run step: deposit from L1 to L2 if needed
+step-deposit:
+    cargo run --bin step -- -k "$PRIVATE_KEY" --config ./config.test.toml deposit
+
 check-inflight-deposits:
     cargo nextest run --package orchestrator --test inflight --run-ignored ignored-only test_long_lookback_scan_slow
 

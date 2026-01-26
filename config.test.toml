@@ -1,0 +1,12 @@
+# L1 RPC endpoint (Ethereum Sepolia)
+l1_rpc_url = "https://ethereum-sepolia-rpc.publicnode.com"
+
+# L2 RPC endpoint (Base Sepolia or Optimism Sepolia)
+l2_rpc_url = "https://sepolia.unichain.org"
+
+# Network type: "Mainnet" or "Testnet"
+network = "Testnet"
+
+# EOA address to query native balance
+# Can be any address (your wallet, a known contract, etc.)
+eoa_address = "0x5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"

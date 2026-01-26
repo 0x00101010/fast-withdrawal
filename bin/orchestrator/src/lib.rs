@@ -22,15 +22,13 @@ pub async fn check_l2_spoke_pool_balance<P>(
     monitor: &BalanceMonitor<P>,
     spoke_pool: Address,
     token: Address,
-    relayer: Address,
 ) -> eyre::Result<Balance>
 where
     P: Provider + Clone,
 {
-    let query = BalanceQuery::SpokePoolBalance {
-        spoke_pool,
+    let query = BalanceQuery::ERC20Balance {
         token,
-        relayer,
+        holder: spoke_pool,
     };
     let balance = monitor.query_balance(query).await?;
 
@@ -362,8 +360,7 @@ where
     let actual_balance = check_l2_spoke_pool_balance(
         &l2_monitor,
         network.unichain.spoke_pool,
-        Address::ZERO, // ETH
-        config.eoa_address,
+        network.unichain.weth,
     )
     .await?;
 
