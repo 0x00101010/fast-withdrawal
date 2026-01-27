@@ -1,6 +1,7 @@
 pub mod config;
 pub mod metrics;
 
+use crate::metrics::Metrics;
 use action::{
     deposit::{DepositAction, DepositConfig},
     finalize::{Finalize, FinalizeAction},
@@ -12,12 +13,136 @@ use alloy_primitives::{utils::format_ether, Address, Bytes, U256};
 use alloy_provider::Provider;
 use alloy_rpc_types_eth::BlockNumberOrTag;
 use balance::{monitor::BalanceMonitor, Balance, BalanceQuery, Monitor};
-use deposit::get_inflight_deposit_total;
+use deposit::get_inflight_deposits;
 use tracing::{error, info, warn};
 use withdrawal::{
     state::{PendingWithdrawal, WithdrawalStateProvider},
     types::WithdrawalStatus,
 };
+
+/// Convert ETH string from format_ether to f64 for metrics.
+fn eth_to_f64(eth_str: String) -> f64 {
+    eth_str.parse::<f64>().unwrap_or(0.0)
+}
+
+/// Update all metrics gauges with current state.
+///
+/// Queries balances, in-flight deposits, and pending withdrawals, then updates
+/// the metrics accordingly. Errors are logged but don't fail the function.
+pub async fn update_metrics<P1, P2>(
+    l1_provider: P1,
+    l2_provider: P2,
+    config: &config::Config,
+    metrics: &Metrics,
+) where
+    P1: Provider + Clone,
+    P2: Provider + Clone,
+{
+    let network = config.network_config();
+
+    // 1. L1 EOA balance
+    match l1_provider.get_balance(config.eoa_address).await {
+        Ok(balance) => metrics.set_l1_eoa_balance_eth(eth_to_f64(format_ether(balance))),
+        Err(e) => warn!(error = %e, "Failed to get L1 EOA balance for metrics"),
+    }
+
+    // 2. L2 EOA balance
+    match l2_provider.get_balance(config.eoa_address).await {
+        Ok(balance) => metrics.set_l2_eoa_balance_eth(eth_to_f64(format_ether(balance))),
+        Err(e) => warn!(error = %e, "Failed to get L2 EOA balance for metrics"),
+    }
+
+    // 3. SpokePool WETH balance
+    let l2_monitor = BalanceMonitor::new(l2_provider.clone());
+    match check_l2_spoke_pool_balance(
+        &l2_monitor,
+        network.unichain.spoke_pool,
+        network.unichain.weth,
+    )
+    .await
+    {
+        Ok(balance) => metrics.set_spoke_pool_balance_eth(eth_to_f64(format_ether(balance.amount))),
+        Err(e) => warn!(error = %e, "Failed to get SpokePool balance for metrics"),
+    }
+
+    // 4. In-flight deposits
+    match get_inflight_deposits(
+        l1_provider.clone(),
+        l2_provider.clone(),
+        network.ethereum.spoke_pool,
+        network.unichain.spoke_pool,
+        config.eoa_address,
+        network.unichain.chain_id,
+        network.ethereum.chain_id,
+        config.deposit_lookback_secs,
+        network.ethereum.block_time_secs,
+        network.unichain.block_time_secs,
+    )
+    .await
+    {
+        Ok(deposits) => {
+            let total: U256 = deposits.iter().map(|d| d.input_amount).sum();
+            metrics.set_inflight_deposits(deposits.len(), eth_to_f64(format_ether(total)));
+        }
+        Err(e) => warn!(error = %e, "Failed to get in-flight deposits for metrics"),
+    }
+
+    // 5. In-flight withdrawals (by status)
+    let l2_current_block = match l2_provider.get_block_number().await {
+        Ok(b) => b,
+        Err(e) => {
+            warn!(error = %e, "Failed to get L2 block number for withdrawal metrics");
+            return;
+        }
+    };
+    let lookback_blocks = config.withdrawal_lookback_secs / network.unichain.block_time_secs;
+    let from_block = l2_current_block.saturating_sub(lookback_blocks);
+
+    let state_provider = WithdrawalStateProvider::new(
+        l1_provider,
+        l2_provider,
+        network.unichain.l1_portal,
+        network.unichain.l2_to_l1_message_passer,
+    );
+
+    match state_provider
+        .get_pending_withdrawals(
+            BlockNumberOrTag::Number(from_block),
+            BlockNumberOrTag::Latest,
+            config.eoa_address,
+        )
+        .await
+    {
+        Ok(pending) => {
+            let mut initiated_count = 0usize;
+            let mut initiated_amount = U256::ZERO;
+            let mut proven_count = 0usize;
+            let mut proven_amount = U256::ZERO;
+
+            for w in &pending {
+                match w.status {
+                    WithdrawalStatus::Initiated => {
+                        initiated_count += 1;
+                        initiated_amount += w.transaction.value;
+                    }
+                    WithdrawalStatus::Proven { .. } => {
+                        proven_count += 1;
+                        proven_amount += w.transaction.value;
+                    }
+                    WithdrawalStatus::Finalized => {}
+                }
+            }
+
+            metrics.set_inflight_withdrawals(
+                initiated_count,
+                eth_to_f64(format_ether(initiated_amount)),
+                proven_count,
+                eth_to_f64(format_ether(proven_amount)),
+            );
+        }
+        Err(e) => warn!(error = %e, "Failed to get pending withdrawals for metrics"),
+    }
+}
 
 pub async fn check_l2_spoke_pool_balance<P>(
     monitor: &BalanceMonitor<P>,
@@ -366,7 +491,7 @@ where
     .await?;
 
     // Get in-flight deposit total
-    let inflight_total = get_inflight_deposit_total(
+    let inflight_deposits = get_inflight_deposits(
         l1_provider.clone(),
         l2_provider,
         network.ethereum.spoke_pool,
@@ -379,6 +504,7 @@ where
         network.unichain.block_time_secs,
     )
     .await?;
+    let inflight_total: U256 = inflight_deposits.iter().map(|d| d.input_amount).sum();
 
     // Calculate projected balance
     let projected_balance = actual_balance.amount.saturating_sub(inflight_total);

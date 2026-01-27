@@ -3,7 +3,7 @@ use orchestrator::{
     config::Config,
     maybe_deposit, maybe_initiate_withdrawal,
     metrics::{install_prometheus_exporter, Metrics},
-    process_pending_withdrawals,
+    process_pending_withdrawals, update_metrics,
 };
 use std::{
     sync::{
@@ -185,6 +185,15 @@ async fn main() -> eyre::Result<()> {
             || deposit_result.is_failure();
 
         metrics.record_cycle(!has_failure, cycle_duration);
+
+        // Update state gauges (balances, in-flight counts)
+        update_metrics(
+            l1_provider.clone(),
+            l2_provider.clone(),
+            &config,
+            &metrics,
+        )
+        .await;
 
         // Log cycle summary
         let dry_run_marker = if config.dry_run { " [DRY-RUN]" } else { "" };

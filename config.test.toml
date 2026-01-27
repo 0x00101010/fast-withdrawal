@@ -56,7 +56,7 @@ withdrawal_lookback_secs = 1209600
 
 # How often to run the main loop (in seconds)
 # Default: 30
-cycle_interval_secs = 120
+cycle_interval_secs = 30
 
 # Dry-run mode: log actions without executing transactions
 # Default: false
