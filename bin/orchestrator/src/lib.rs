@@ -1,4 +1,5 @@
 pub mod config;
+pub mod metrics;
 
 use action::{
     deposit::{DepositAction, DepositConfig},

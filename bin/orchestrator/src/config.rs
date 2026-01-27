@@ -67,6 +67,10 @@ impl Default for Config {
     }
 }
 
+const fn default_metrics_port() -> u16 {
+    9090 // Common Prometheus metrics port
+}
+
 impl Config {
     pub fn from_file(path: impl AsRef<Path>) -> eyre::Result<Self> {
         let contents = std::fs::read_to_string(path)?;

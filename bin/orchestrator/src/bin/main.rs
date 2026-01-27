@@ -1,6 +1,9 @@
 use clap::Parser;
 use orchestrator::{
-    config::Config, maybe_deposit, maybe_initiate_withdrawal, process_pending_withdrawals,
+    config::Config,
+    maybe_deposit, maybe_initiate_withdrawal,
+    metrics::{install_prometheus_exporter, Metrics},
+    process_pending_withdrawals,
 };
 use std::{
     sync::{
@@ -48,12 +51,6 @@ impl StepResult {
     }
 }
 
-/// Cumulative metrics for the orchestrator
-#[derive(Debug, Default)]
-struct CycleMetrics {
-    total_successes: u64,
-    total_failures: u64,
-}
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -82,6 +79,17 @@ async fn main() -> eyre::Result<()> {
     info!("  L1 Portal: {}", network.unichain.l1_portal);
     info!("  EOA: {}", config.eoa_address);
     info!("  Cycle interval: {}s", config.cycle_interval_secs);
+    info!("  Dry-run: {}", config.dry_run);
+    info!("  Metrics port: {}", config.metrics_port);
+
+    if config.dry_run {
+        warn!("=== DRY-RUN MODE: No transactions will be submitted ===");
+    }
+
+    // Start Prometheus metrics server
+    info!("Starting metrics server on port {}...", config.metrics_port);
+    install_prometheus_exporter(config.metrics_port)?;
+    let metrics = Metrics::new();
 
     // Create providers
     info!("Connecting to L1...");
@@ -116,7 +124,6 @@ async fn main() -> eyre::Result<()> {
 
     let mut interval = time::interval(Duration::from_secs(config.cycle_interval_secs));
     let mut cycle_number: u64 = 0;
-    let mut metrics = CycleMetrics::default();
 
     loop {
         // Wait for next tick OR shutdown signal
@@ -172,30 +179,24 @@ async fn main() -> eyre::Result<()> {
                 }
             };
 
-        // Update cumulative metrics
+        // Update metrics
         let cycle_duration = cycle_start.elapsed();
         let has_failure = process_result.is_failure()
             || initiate_result.is_failure()
             || deposit_result.is_failure();
 
-        if has_failure {
-            metrics.total_failures += 1;
-        } else {
-            metrics.total_successes += 1;
-        }
+        metrics.record_cycle(!has_failure, cycle_duration);
 
         // Log cycle summary
+        let dry_run_marker = if config.dry_run { " [DRY-RUN]" } else { "" };
         info!(
-            "Cycle {} completed in {:.1}s: process_withdrawals={}, initiate_withdrawal={}, deposit={}",
+            "Cycle {}{} completed in {:.1}s: process_withdrawals={}, initiate_withdrawal={}, deposit={}",
             cycle_number,
+            dry_run_marker,
             cycle_duration.as_secs_f64(),
             process_result.as_str(),
             initiate_result.as_str(),
             deposit_result.as_str(),
-        );
-        info!(
-            "Cumulative: successes={}, failures={}",
-            metrics.total_successes, metrics.total_failures
         );
 
         // Check if shutdown was requested after completing the cycle
