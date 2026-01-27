@@ -47,66 +47,56 @@ impl Metrics {
             "Duration of each orchestrator cycle in seconds"
         );
 
-        // Step metrics
-        describe_counter!(
-            "orchestrator_step_success_total",
-            "Total successful step executions by step name"
+        // Balance gauges (point-in-time, queried fresh each cycle)
+        describe_gauge!(
+            "orchestrator_l1_eoa_balance_eth",
+            "Current L1 EOA balance in ETH"
         );
-        describe_counter!(
-            "orchestrator_step_failure_total",
-            "Total failed step executions by step name"
+        describe_gauge!(
+            "orchestrator_l2_eoa_balance_eth",
+            "Current L2 EOA balance in ETH"
+        );
+        describe_gauge!(
+            "orchestrator_spoke_pool_balance_eth",
+            "Current Unichain SpokePool WETH balance in ETH"
         );
 
-        // Withdrawal metrics
-        describe_counter!(
-            "orchestrator_withdrawals_initiated_total",
-            "Total number of L2→L1 withdrawals initiated"
+        // In-flight deposits
+        describe_gauge!(
+            "orchestrator_inflight_deposits_count",
+            "Number of deposits currently in flight (initiated but not filled)"
         );
-        describe_counter!(
-            "orchestrator_withdrawals_proven_total",
-            "Total number of withdrawals proven on L1"
-        );
-        describe_counter!(
-            "orchestrator_withdrawals_finalized_total",
-            "Total number of withdrawals finalized on L1"
-        );
-        describe_counter!(
-            "orchestrator_withdrawal_amount_wei_total",
-            "Total amount withdrawn in wei"
+        describe_gauge!(
+            "orchestrator_inflight_deposits_eth",
+            "Total amount of in-flight deposits in ETH"
         );
 
-        // Deposit metrics
-        describe_counter!(
-            "orchestrator_deposits_total",
-            "Total number of L1→L2 deposits executed"
+        // In-flight withdrawals (total)
+        describe_gauge!(
+            "orchestrator_inflight_withdrawals_count",
+            "Number of withdrawals currently in flight (initiated but not finalized)"
         );
-        describe_counter!(
-            "orchestrator_deposit_amount_wei_total",
-            "Total amount deposited in wei"
+        describe_gauge!(
+            "orchestrator_inflight_withdrawals_eth",
+            "Total amount of in-flight withdrawals in ETH"
         );
 
-        // Balance metrics (gauges - current values)
+        // In-flight withdrawals (by status)
         describe_gauge!(
-            "orchestrator_l2_eoa_balance_wei",
-            "Current L2 EOA balance in wei"
+            "orchestrator_withdrawals_initiated_count",
+            "Number of withdrawals initiated (pending proof)"
         );
         describe_gauge!(
-            "orchestrator_l1_eoa_balance_wei",
-            "Current L1 EOA balance in wei"
+            "orchestrator_withdrawals_initiated_eth",
+            "Total amount of initiated withdrawals in ETH"
         );
         describe_gauge!(
-            "orchestrator_spoke_pool_balance_wei",
-            "Current L2 SpokePool WETH balance in wei"
+            "orchestrator_withdrawals_proven_count",
+            "Number of withdrawals proven (pending finalization)"
         );
         describe_gauge!(
-            "orchestrator_inflight_deposits_wei",
-            "Total in-flight deposit amount in wei"
-        );
-
-        // Pending withdrawal counts
-        describe_gauge!(
-            "orchestrator_pending_withdrawals",
-            "Number of pending withdrawals by status"
+            "orchestrator_withdrawals_proven_eth",
+            "Total amount of proven withdrawals in ETH"
         );
     }
 
@@ -127,76 +117,57 @@ impl Metrics {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Step metrics
+    // Balance gauges
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// Record a step success.
-    pub fn record_step_success(&self, step: &str) {
-        counter!("orchestrator_step_success_total", "step" => step.to_string()).increment(1);
+    /// Set the current L1 EOA balance in ETH.
+    pub fn set_l1_eoa_balance_eth(&self, balance_eth: f64) {
+        gauge!("orchestrator_l1_eoa_balance_eth").set(balance_eth);
     }
 
-    /// Record a step failure.
-    pub fn record_step_failure(&self, step: &str) {
-        counter!("orchestrator_step_failure_total", "step" => step.to_string()).increment(1);
+    /// Set the current L2 EOA balance in ETH.
+    pub fn set_l2_eoa_balance_eth(&self, balance_eth: f64) {
+        gauge!("orchestrator_l2_eoa_balance_eth").set(balance_eth);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Withdrawal metrics
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /// Record a withdrawal initiation.
-    pub fn record_withdrawal_initiated(&self, amount_wei: u128) {
-        counter!("orchestrator_withdrawals_initiated_total").increment(1);
-        counter!("orchestrator_withdrawal_amount_wei_total").increment(amount_wei as u64);
-    }
-
-    /// Record a withdrawal proven.
-    pub fn record_withdrawal_proven(&self) {
-        counter!("orchestrator_withdrawals_proven_total").increment(1);
-    }
-
-    /// Record a withdrawal finalized.
-    pub fn record_withdrawal_finalized(&self) {
-        counter!("orchestrator_withdrawals_finalized_total").increment(1);
+    /// Set the current Unichain SpokePool WETH balance in ETH.
+    pub fn set_spoke_pool_balance_eth(&self, balance_eth: f64) {
+        gauge!("orchestrator_spoke_pool_balance_eth").set(balance_eth);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Deposit metrics
+    // In-flight deposits
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// Record a deposit execution.
-    pub fn record_deposit(&self, amount_wei: u128) {
-        counter!("orchestrator_deposits_total").increment(1);
-        counter!("orchestrator_deposit_amount_wei_total").increment(amount_wei as u64);
+    /// Set the current in-flight deposit count and total amount.
+    pub fn set_inflight_deposits(&self, count: usize, amount_eth: f64) {
+        gauge!("orchestrator_inflight_deposits_count").set(count as f64);
+        gauge!("orchestrator_inflight_deposits_eth").set(amount_eth);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Balance metrics (gauges)
+    // In-flight withdrawals
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /// Set the current L2 EOA balance.
-    pub fn set_l2_eoa_balance(&self, balance_wei: u128) {
-        gauge!("orchestrator_l2_eoa_balance_wei").set(balance_wei as f64);
-    }
+    /// Set the current in-flight withdrawal totals and breakdown by status.
+    pub fn set_inflight_withdrawals(
+        &self,
+        initiated_count: usize,
+        initiated_eth: f64,
+        proven_count: usize,
+        proven_eth: f64,
+    ) {
+        // Total in-flight
+        let total_count = initiated_count + proven_count;
+        let total_eth = initiated_eth + proven_eth;
+        gauge!("orchestrator_inflight_withdrawals_count").set(total_count as f64);
+        gauge!("orchestrator_inflight_withdrawals_eth").set(total_eth);
 
-    /// Set the current L1 EOA balance.
-    pub fn set_l1_eoa_balance(&self, balance_wei: u128) {
-        gauge!("orchestrator_l1_eoa_balance_wei").set(balance_wei as f64);
-    }
-
-    /// Set the current L2 SpokePool balance.
-    pub fn set_spoke_pool_balance(&self, balance_wei: u128) {
-        gauge!("orchestrator_spoke_pool_balance_wei").set(balance_wei as f64);
-    }
-
-    /// Set the current in-flight deposit total.
-    pub fn set_inflight_deposits(&self, amount_wei: u128) {
-        gauge!("orchestrator_inflight_deposits_wei").set(amount_wei as f64);
-    }
-
-    /// Set the count of pending withdrawals by status.
-    pub fn set_pending_withdrawals(&self, status: &str, count: usize) {
-        gauge!("orchestrator_pending_withdrawals", "status" => status.to_string()).set(count as f64);
+        // By status
+        gauge!("orchestrator_withdrawals_initiated_count").set(initiated_count as f64);
+        gauge!("orchestrator_withdrawals_initiated_eth").set(initiated_eth);
+        gauge!("orchestrator_withdrawals_proven_count").set(proven_count as f64);
+        gauge!("orchestrator_withdrawals_proven_eth").set(proven_eth);
     }
 }
 
