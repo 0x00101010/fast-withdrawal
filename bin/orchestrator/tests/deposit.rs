@@ -15,7 +15,7 @@ use action::{
 };
 use alloy_primitives::{Address, Bytes, U256};
 use config::NetworkConfig;
-use setup::{load_test_config, setup_provider, setup_wallet_provider};
+use setup::{load_test_config, mock_signer, setup_provider, setup_signer};
 
 /// Helper to create a test deposit config for Ethereum -> Unichain
 fn create_test_deposit_config(depositor: Address, network_config: &NetworkConfig) -> DepositConfig {
@@ -64,7 +64,7 @@ async fn test_deposit_action_creation() {
     let deposit_config = create_test_deposit_config(config.eoa_address, &network_config);
 
     // Create deposit action
-    let action = DepositAction::new(provider, deposit_config);
+    let action = DepositAction::new(provider, mock_signer(), deposit_config);
 
     // Test is_ready
     let is_ready = action.is_ready().await.expect("Failed to check is_ready");
@@ -86,7 +86,7 @@ async fn test_deposit_action_validation() {
     let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.spoke_pool = Address::ZERO;
 
-    let action = DepositAction::new(provider.clone(), invalid_config);
+    let action = DepositAction::new(provider.clone(), mock_signer(), invalid_config);
     assert!(
         !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready with zero spoke pool"
@@ -96,7 +96,7 @@ async fn test_deposit_action_validation() {
     let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.recipient = Address::ZERO;
 
-    let action = DepositAction::new(provider.clone(), invalid_config);
+    let action = DepositAction::new(provider.clone(), mock_signer(), invalid_config);
     assert!(
         !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready with zero recipient"
@@ -106,7 +106,7 @@ async fn test_deposit_action_validation() {
     let mut invalid_config = create_test_deposit_config(config.eoa_address, &network_config);
     invalid_config.input_amount = U256::ZERO;
 
-    let action = DepositAction::new(provider.clone(), invalid_config);
+    let action = DepositAction::new(provider.clone(), mock_signer(), invalid_config);
     assert!(
         !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready with zero amount"
@@ -117,7 +117,7 @@ async fn test_deposit_action_validation() {
     invalid_config.input_amount = U256::from(100);
     invalid_config.output_amount = U256::from(90);
 
-    let action = DepositAction::new(provider, invalid_config);
+    let action = DepositAction::new(provider, mock_signer(), invalid_config);
     assert!(
         !action.is_ready().await.expect("Failed to check is_ready"),
         "Should not be ready when output exceeds input"
@@ -139,7 +139,7 @@ async fn test_deposit_action_description() {
     let dest_chain = deposit_config.destination_chain_id;
 
     // Create deposit action
-    let action = DepositAction::new(provider, deposit_config);
+    let action = DepositAction::new(provider, mock_signer(), deposit_config);
 
     // Get description
     let description = action.description();
@@ -162,7 +162,7 @@ async fn test_deposit_action_is_completed() {
     let deposit_config = create_test_deposit_config(config.eoa_address, &network_config);
 
     // Create deposit action
-    let action = DepositAction::new(provider, deposit_config);
+    let action = DepositAction::new(provider, mock_signer(), deposit_config);
 
     // Check if completed (should be false since we haven't executed)
     let is_completed = action
@@ -183,10 +183,11 @@ async fn test_deposit_action_execute() {
     let network_config = config.network_config();
 
     println!("⚠️  WARNING: This test will execute a REAL deposit transaction!");
-    println!("Setting up wallet provider for transaction signing...");
+    println!("Setting up provider and signer for transaction signing...");
 
-    // Use wallet provider instead of read-only provider
-    let provider = setup_wallet_provider(&config.l1_rpc_url).await;
+    // Use provider and signer
+    let provider = setup_provider(&config.l1_rpc_url).await;
+    let signer = setup_signer(network_config.ethereum.chain_id, provider.clone());
 
     println!("\nTest Depositor: {}", config.eoa_address);
     println!("Make sure the depositor has sufficient ETH for the deposit + gas");
@@ -232,7 +233,7 @@ async fn test_deposit_action_execute() {
     );
 
     // Create deposit action
-    let mut action = DepositAction::new(provider, deposit_config);
+    let mut action = DepositAction::new(provider, signer, deposit_config);
 
     // Verify action is ready
     assert!(

@@ -1,5 +1,7 @@
+use crate::SignerFn;
 use alloy_primitives::{utils::format_ether, Address, Bytes, U256};
 use alloy_provider::Provider;
+use alloy_rpc_types_eth::BlockNumberOrTag;
 use binding::across::ISpokePool;
 
 /// Configuration for a deposit action.
@@ -37,6 +39,7 @@ pub struct DepositConfig {
 /// Deposit action for sending tokens cross-chain via Across Protocol.
 pub struct DepositAction<P> {
     provider: P,
+    signer: SignerFn,
     config: DepositConfig,
 }
 
@@ -45,16 +48,25 @@ where
     P: Provider + Clone,
 {
     /// Create a new deposit action.
-    pub const fn new(provider: P, config: DepositConfig) -> Self {
-        Self { provider, config }
+    pub fn new(provider: P, signer: SignerFn, config: DepositConfig) -> Self {
+        Self {
+            provider,
+            signer,
+            config,
+        }
     }
 
-    /// Get the current timestamp (wall clock time).
-    fn get_current_timestamp(&self) -> u32 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_secs() as u32
+    /// Get the current block timestamp from the chain.
+    ///
+    /// This is more accurate than wall clock time for quote validation
+    /// since the SpokePool validates against block timestamps.
+    async fn get_current_block_timestamp(&self) -> eyre::Result<u32> {
+        let block = self
+            .provider
+            .get_block_by_number(BlockNumberOrTag::Latest)
+            .await?
+            .ok_or_else(|| eyre::eyre!("Failed to get latest block"))?;
+        Ok(block.header.timestamp as u32)
     }
 
     /// Validate the deposit configuration.
@@ -105,14 +117,14 @@ where
             eyre::bail!("Deposit not ready");
         }
 
-        // Get current timestamp for quote
-        let quote_timestamp = self.get_current_timestamp();
+        // Get current block timestamp for quote
+        let quote_timestamp = self.get_current_block_timestamp().await?;
 
         // Create contract instance
         let contract = ISpokePool::new(self.config.spoke_pool, &self.provider);
 
-        // Execute depositV3
-        let pending_tx = contract
+        // Build the transaction request
+        let call = contract
             .depositV3(
                 self.config.depositor,
                 self.config.recipient,
@@ -127,10 +139,14 @@ where
                 self.config.exclusivity_parameter,
                 self.config.message.clone(),
             )
-            .value(self.config.input_amount)
-            .send()
-            .await?;
+            .value(self.config.input_amount);
+        let tx_request = call.into_transaction_request();
 
+        // Sign externally
+        let signed_tx = (self.signer)(tx_request).await?;
+
+        // Broadcast the signed transaction
+        let pending_tx = self.provider.send_raw_transaction(&signed_tx).await?;
         let tx_hash = *pending_tx.tx_hash();
 
         // Wait for confirmation
@@ -159,7 +175,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test_utils::MockProvider, Action};
+    use crate::{
+        test_utils::{mock_signer, MockProvider},
+        Action,
+    };
 
     fn mock_config() -> DepositConfig {
         DepositConfig {
@@ -183,6 +202,7 @@ mod tests {
         let config = mock_config();
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -195,6 +215,7 @@ mod tests {
         config.spoke_pool = Address::ZERO;
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -207,6 +228,7 @@ mod tests {
         config.recipient = Address::ZERO;
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -219,6 +241,7 @@ mod tests {
         config.input_amount = U256::ZERO;
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -232,6 +255,7 @@ mod tests {
         config.output_amount = U256::from(200);
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -243,6 +267,7 @@ mod tests {
         let config = mock_config();
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -255,6 +280,7 @@ mod tests {
         config.spoke_pool = Address::ZERO;
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -269,6 +295,7 @@ mod tests {
         config.recipient = Address::ZERO;
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -283,6 +310,7 @@ mod tests {
         config.input_amount = U256::ZERO;
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -298,6 +326,7 @@ mod tests {
         config.output_amount = U256::from(200);
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -312,6 +341,7 @@ mod tests {
         config.output_amount = U256::from(90);
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config,
         };
 
@@ -324,6 +354,7 @@ mod tests {
         let config = mock_config();
         let action = DepositAction {
             provider: MockProvider {},
+            signer: mock_signer(),
             config: config.clone(),
         };
 

@@ -2,7 +2,7 @@
 //!
 //! Submits a proof to L1 that a withdrawal was initiated on L2.
 
-use crate::Action;
+use crate::{Action, SignerFn};
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
 use binding::opstack::{IOptimismPortal2, WithdrawalTransaction};
@@ -28,6 +28,7 @@ pub struct Prove {
 pub struct ProveAction<P1, P2> {
     l1_provider: P1,
     l2_provider: P2,
+    signer: SignerFn,
     action: Prove,
 }
 
@@ -36,10 +37,11 @@ where
     P1: Provider + Clone,
     P2: Provider + Clone,
 {
-    pub const fn new(l1_provider: P1, l2_provider: P2, action: Prove) -> Self {
+    pub fn new(l1_provider: P1, l2_provider: P2, signer: SignerFn, action: Prove) -> Self {
         Self {
             l1_provider,
             l2_provider,
+            signer,
             action,
         }
     }
@@ -109,20 +111,22 @@ where
             "Proof generated, submitting to L1"
         );
 
-        // Submit the proof to L1
+        // Build the transaction request
         let portal = IOptimismPortal2::new(self.action.portal_address, &self.l1_provider);
+        let call = portal.proveWithdrawalTransaction(
+            proof_params.withdrawal,
+            proof_params.dispute_game_index,
+            proof_params.output_root_proof,
+            proof_params.withdrawal_proof,
+        );
+        let tx_request = call.into_transaction_request();
 
-        let tx = portal
-            .proveWithdrawalTransaction(
-                proof_params.withdrawal,
-                proof_params.dispute_game_index,
-                proof_params.output_root_proof,
-                proof_params.withdrawal_proof,
-            )
-            .send()
-            .await?;
+        // Sign externally
+        let signed_tx = (self.signer)(tx_request).await?;
 
-        let receipt = tx.get_receipt().await?;
+        // Broadcast the signed transaction
+        let pending = self.l1_provider.send_raw_transaction(&signed_tx).await?;
+        let receipt = pending.get_receipt().await?;
 
         info!(
             tx_hash = %receipt.transaction_hash,
@@ -148,7 +152,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::MockProvider;
+    use crate::test_utils::{mock_signer, MockProvider};
     use alloy_primitives::{address, b256, Bytes};
 
     fn create_test_prove_action() -> ProveAction<MockProvider, MockProvider> {
@@ -169,7 +173,7 @@ mod tests {
             l2_block: 42276959,
         };
 
-        ProveAction::new(MockProvider, MockProvider, prove)
+        ProveAction::new(MockProvider, MockProvider, mock_signer(), prove)
     }
 
     #[test]

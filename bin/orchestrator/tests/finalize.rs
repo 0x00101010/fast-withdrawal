@@ -5,7 +5,7 @@
 //! - Check if proof maturity delay has passed
 //! - Execute real finalize transaction
 
-use crate::setup::{load_test_config, setup_provider, setup_wallet_provider};
+use crate::setup::{load_test_config, setup_provider, setup_signer};
 use action::{
     finalize::{Finalize, FinalizeAction},
     Action,
@@ -41,9 +41,10 @@ async fn test_finalize_action_execute() {
     println!("Portal: {}", config.network_config().unichain.l1_portal);
     println!("EOA: {}", config.eoa_address);
 
-    // Use wallet provider for L1 (needs to sign transactions)
-    let l1_provider = setup_wallet_provider(&config.l1_rpc_url).await;
+    // Use provider and signer for L1 (needs to sign transactions)
+    let l1_provider = setup_provider(&config.l1_rpc_url).await;
     let l2_provider = setup_provider(&config.l2_rpc_url).await;
+    let l1_signer = setup_signer(config.network_config().ethereum.chain_id, l1_provider.clone());
 
     // Find pending withdrawals
     let state_provider = WithdrawalStateProvider::new(
@@ -106,7 +107,7 @@ async fn test_finalize_action_execute() {
         proof_submitter: config.eoa_address, // Assuming we proved it ourselves
     };
 
-    let mut action = FinalizeAction::new(l1_provider, l2_provider, finalize);
+    let mut action = FinalizeAction::new(l1_provider, l2_provider, l1_signer, finalize);
 
     // Check if ready
     println!("\nChecking if action is ready...");

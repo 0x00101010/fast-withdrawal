@@ -3,7 +3,7 @@
 //! Finalizes a proven withdrawal on L1, executing the withdrawal transaction
 //! and sending ETH/tokens to the recipient.
 
-use crate::Action;
+use crate::{Action, SignerFn};
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
 use binding::opstack::{IOptimismPortal2, WithdrawalTransaction};
@@ -27,6 +27,7 @@ pub struct Finalize {
 pub struct FinalizeAction<P1, P2> {
     l1_provider: P1,
     l2_provider: P2,
+    signer: SignerFn,
     action: Finalize,
 }
 
@@ -35,10 +36,11 @@ where
     P1: Provider + Clone,
     P2: Provider + Clone,
 {
-    pub const fn new(l1_provider: P1, l2_provider: P2, action: Finalize) -> Self {
+    pub fn new(l1_provider: P1, l2_provider: P2, signer: SignerFn, action: Finalize) -> Self {
         Self {
             l1_provider,
             l2_provider,
+            signer,
             action,
         }
     }
@@ -150,18 +152,20 @@ where
             "Finalizing withdrawal"
         );
 
-        // Submit the finalize transaction to L1
+        // Build the transaction request
         let portal = IOptimismPortal2::new(self.action.portal_address, &self.l1_provider);
+        let call = portal.finalizeWithdrawalTransactionExternalProof(
+            self.action.withdrawal.clone(),
+            self.action.proof_submitter,
+        );
+        let tx_request = call.into_transaction_request();
 
-        let tx = portal
-            .finalizeWithdrawalTransactionExternalProof(
-                self.action.withdrawal.clone(),
-                self.action.proof_submitter,
-            )
-            .send()
-            .await?;
+        // Sign externally
+        let signed_tx = (self.signer)(tx_request).await?;
 
-        let receipt = tx.get_receipt().await?;
+        // Broadcast the signed transaction
+        let pending = self.l1_provider.send_raw_transaction(&signed_tx).await?;
+        let receipt = pending.get_receipt().await?;
 
         info!(
             tx_hash = %receipt.transaction_hash,
@@ -189,7 +193,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::MockProvider;
+    use crate::test_utils::{mock_signer, MockProvider};
     use alloy_primitives::{address, b256, Bytes};
 
     fn create_test_finalize_action() -> FinalizeAction<MockProvider, MockProvider> {
@@ -209,7 +213,7 @@ mod tests {
             proof_submitter: address!("5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"),
         };
 
-        FinalizeAction::new(MockProvider, MockProvider, finalize)
+        FinalizeAction::new(MockProvider, MockProvider, mock_signer(), finalize)
     }
 
     #[test]

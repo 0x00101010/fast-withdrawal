@@ -3,6 +3,13 @@ pub use config::{NetworkConfig, NetworkType};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Configuration for remote transaction signing via signer-proxy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteSignerConfig {
+    /// URL of the signer-proxy service (e.g., "http://localhost:9060")
+    pub proxy_url: String,
+}
+
 /// Top-level orchestrator configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -18,6 +25,11 @@ pub struct Config {
 
     /// EOA address
     pub eoa_address: Address,
+
+    /// Remote signer configuration (optional).
+    /// When set, transactions are signed via the signer-proxy service.
+    /// When None, PRIVATE_KEY env var is used for local signing.
+    pub remote_signer: Option<RemoteSignerConfig>,
 
     /// How far back to scan for in-flight deposits (in seconds).
     pub deposit_lookback_secs: u64,
@@ -54,9 +66,10 @@ impl Default for Config {
             l2_rpc_url: String::new(),
             network: NetworkType::Testnet,
             eoa_address: Address::ZERO,
+            remote_signer: None,
             deposit_lookback_secs: 43200, // 12 hours
             spoke_pool_target_wei: U256::from(75_000_000_000_000_000_000_u128), // 75 ETH
-            spoke_pool_floor_wei: U256::from(20_000_000_000_000_000_000_u128),  // 20 ETH
+            spoke_pool_floor_wei: U256::from(20_000_000_000_000_000_000_u128), // 20 ETH
             withdrawal_threshold_wei: U256::from(75_000_000_000_000_000_000_u128), // 75 ETH
             gas_buffer_wei: U256::from(10_000_000_000_000_000_u128), // 0.01 ETH
             withdrawal_lookback_secs: 1_209_600, // 2 weeks

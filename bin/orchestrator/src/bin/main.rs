@@ -1,4 +1,5 @@
 use clap::Parser;
+use client::{local_signer_fn, remote_signer_fn, RemoteSigner, SignerFn};
 use orchestrator::{
     config::Config,
     maybe_deposit, maybe_initiate_withdrawal,
@@ -22,6 +23,11 @@ struct Cli {
     /// Path to the configuration file
     #[arg(short, long, default_value = "config.toml")]
     config: String,
+
+    /// Private key for signing transactions (hex string, with or without 0x prefix).
+    /// Required when remote_signer is not configured.
+    #[arg(short = 'k', long, env = "PRIVATE_KEY")]
+    private_key: Option<String>,
 
     /// Dry-run mode: log actions without executing transactions
     #[arg(long)]
@@ -90,12 +96,45 @@ async fn main() -> eyre::Result<()> {
     install_prometheus_exporter(config.metrics_port)?;
     let metrics = Metrics::new();
 
-    // Create providers
-    info!("Connecting to L1...");
+    // Create providers (read-only, signing handled separately)
     let l1_provider = client::create_provider(&config.l1_rpc_url).await?;
-
-    info!("Connecting to L2...");
     let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
+
+    // Create signers based on configuration
+    let (l1_signer, l2_signer): (SignerFn, SignerFn) =
+        match (&config.remote_signer, cli.private_key.as_deref()) {
+            (Some(remote_config), _) => {
+                info!("Using remote signer at {}", remote_config.proxy_url);
+                let l1_remote = RemoteSigner::new(
+                    &remote_config.proxy_url,
+                    config.eoa_address,
+                    network.ethereum.chain_id,
+                );
+                let l2_remote = RemoteSigner::new(
+                    &remote_config.proxy_url,
+                    config.eoa_address,
+                    network.unichain.chain_id,
+                );
+                (
+                    remote_signer_fn(l1_remote, l1_provider.clone()),
+                    remote_signer_fn(l2_remote, l2_provider.clone()),
+                )
+            }
+            (None, Some(pk)) => {
+                info!("Using local private key for signing");
+                let l1_signer =
+                    local_signer_fn(pk, network.ethereum.chain_id, l1_provider.clone())?;
+                let l2_signer =
+                    local_signer_fn(pk, network.unichain.chain_id, l2_provider.clone())?;
+                (l1_signer, l2_signer)
+            }
+            (None, None) => {
+                eyre::bail!(
+                    "No signing method configured. Provide PRIVATE_KEY env var, \
+                     configure remote_signer in config, or use --dry-run mode."
+                );
+            }
+        };
 
     // Set up graceful shutdown handling
     let shutdown_requested = Arc::new(AtomicBool::new(false));
@@ -148,19 +187,29 @@ async fn main() -> eyre::Result<()> {
         let cycle_start = Instant::now();
 
         // 1. Process pending withdrawals (finalize + prove)
-        let process_result =
-            match process_pending_withdrawals(l1_provider.clone(), l2_provider.clone(), &config)
-                .await
-            {
-                Ok(_) => StepResult::Ok,
-                Err(e) => {
-                    warn!(error = %e, "Failed to process pending withdrawals");
-                    StepResult::Failed
-                }
-            };
+        let process_result = match process_pending_withdrawals(
+            l1_provider.clone(),
+            l2_provider.clone(),
+            l1_signer.clone(),
+            &config,
+        )
+        .await
+        {
+            Ok(_) => StepResult::Ok,
+            Err(e) => {
+                warn!(error = %e, "Failed to process pending withdrawals");
+                StepResult::Failed
+            }
+        };
 
         // 2. Maybe initiate new withdrawal (L2->L1)
-        let initiate_result = match maybe_initiate_withdrawal(l2_provider.clone(), &config).await {
+        let initiate_result = match maybe_initiate_withdrawal(
+            l2_provider.clone(),
+            l2_signer.clone(),
+            &config,
+        )
+        .await
+        {
             Ok(_) => StepResult::Ok,
             Err(e) => {
                 warn!(error = %e, "Failed to check/initiate withdrawal");
@@ -169,14 +218,20 @@ async fn main() -> eyre::Result<()> {
         };
 
         // 3. Maybe deposit to L2 (L1->L2)
-        let deposit_result =
-            match maybe_deposit(l1_provider.clone(), l2_provider.clone(), &config).await {
-                Ok(_) => StepResult::Ok,
-                Err(e) => {
-                    warn!(error = %e, "Failed to check/execute deposit");
-                    StepResult::Failed
-                }
-            };
+        let deposit_result = match maybe_deposit(
+            l1_provider.clone(),
+            l2_provider.clone(),
+            l1_signer.clone(),
+            &config,
+        )
+        .await
+        {
+            Ok(_) => StepResult::Ok,
+            Err(e) => {
+                warn!(error = %e, "Failed to check/execute deposit");
+                StepResult::Failed
+            }
+        };
 
         // Update metrics
         let cycle_duration = cycle_start.elapsed();
@@ -187,13 +242,7 @@ async fn main() -> eyre::Result<()> {
         metrics.record_cycle(!has_failure, cycle_duration);
 
         // Update state gauges (balances, in-flight counts)
-        update_metrics(
-            l1_provider.clone(),
-            l2_provider.clone(),
-            &config,
-            &metrics,
-        )
-        .await;
+        update_metrics(l1_provider.clone(), l2_provider.clone(), &config, &metrics).await;
 
         // Log cycle summary
         let dry_run_marker = if config.dry_run { " [DRY-RUN]" } else { "" };

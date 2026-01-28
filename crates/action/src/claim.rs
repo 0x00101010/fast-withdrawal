@@ -1,3 +1,4 @@
+use crate::SignerFn;
 use alloy_primitives::{Address, U256};
 use alloy_provider::Provider;
 use binding::across::ISpokePool;
@@ -18,6 +19,7 @@ pub struct Claim {
 /// Claim action for claiming relayer refunds from ISpokePool.
 pub struct ClaimAction<P> {
     provider: P,
+    signer: SignerFn,
     claim: Claim,
 }
 
@@ -25,8 +27,12 @@ impl<P> ClaimAction<P>
 where
     P: Provider + Clone,
 {
-    pub const fn new(provider: P, claim: Claim) -> Self {
-        Self { provider, claim }
+    pub fn new(provider: P, signer: SignerFn, claim: Claim) -> Self {
+        Self {
+            provider,
+            signer,
+            claim,
+        }
     }
 
     fn validate_claim(&self) -> eyre::Result<()> {
@@ -83,11 +89,19 @@ where
             eyre::bail!("Claim not ready");
         }
 
+        // Build the transaction request
         let contract = ISpokePool::new(self.claim.spoke_pool, &self.provider);
-        let tx = contract.claimRelayerRefund(self.claim.token).send().await?;
+        let call = contract.claimRelayerRefund(self.claim.token);
+        let tx_request = call.into_transaction_request();
 
-        let tx_hash = *tx.tx_hash();
-        let receipt = tx.get_receipt().await?;
+        // Sign externally
+        let signed_tx = (self.signer)(tx_request).await?;
+
+        // Broadcast the signed transaction
+        let pending = self.provider.send_raw_transaction(&signed_tx).await?;
+        let tx_hash = *pending.tx_hash();
+        let receipt = pending.get_receipt().await?;
+
         if !receipt.status() {
             eyre::bail!("Transaction reverted");
         }
@@ -110,7 +124,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{test_utils::MockProvider, Action};
+    use crate::{
+        test_utils::{mock_signer, MockProvider},
+        Action,
+    };
 
     #[test]
     fn test_claim_validation() {
@@ -121,7 +138,7 @@ mod tests {
             relayer: Address::repeat_byte(4),
         };
 
-        let action = ClaimAction::new(MockProvider, valid_claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), valid_claim);
         assert!(action.validate_claim().is_ok());
     }
 
@@ -134,7 +151,7 @@ mod tests {
             relayer: Address::repeat_byte(4),
         };
 
-        let action = ClaimAction::new(MockProvider, invalid_claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), invalid_claim);
         let result = action.validate_claim();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Spoke pool"));
@@ -149,7 +166,7 @@ mod tests {
             relayer: Address::repeat_byte(4),
         };
 
-        let action = ClaimAction::new(MockProvider, invalid_claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), invalid_claim);
         let result = action.validate_claim();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Token"));
@@ -164,7 +181,7 @@ mod tests {
             relayer: Address::repeat_byte(4),
         };
 
-        let action = ClaimAction::new(MockProvider, invalid_claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), invalid_claim);
         let result = action.validate_claim();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Refund address"));
@@ -179,7 +196,7 @@ mod tests {
             relayer: Address::ZERO,
         };
 
-        let action = ClaimAction::new(MockProvider, invalid_claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), invalid_claim);
         let result = action.validate_claim();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Relayer"));
@@ -194,7 +211,7 @@ mod tests {
             relayer: Address::repeat_byte(4),
         };
 
-        let action = ClaimAction::new(MockProvider, claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), claim);
         // Currently always returns true (TODO in implementation)
         assert!(action.is_ready().await.unwrap());
     }
@@ -208,7 +225,7 @@ mod tests {
             relayer: Address::repeat_byte(4),
         };
 
-        let action = ClaimAction::new(MockProvider, claim);
+        let action = ClaimAction::new(MockProvider, mock_signer(), claim);
         let desc = action.description();
 
         assert!(desc.contains("Claim relayer refund"));

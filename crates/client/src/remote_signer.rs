@@ -81,11 +81,19 @@ impl RemoteSigner {
             id: 1,
         };
 
-        let response = self.client.post(&self.proxy_url).json(&request).send().await?;
+        let response = self
+            .client
+            .post(&self.proxy_url)
+            .json(&request)
+            .send()
+            .await?;
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_else(|_| "unknown".to_string());
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "unknown".to_string());
             bail!("signer-proxy returned {status}: {body}");
         }
 

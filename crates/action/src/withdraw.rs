@@ -1,4 +1,4 @@
-use crate::Action;
+use crate::{Action, SignerFn};
 use alloy_primitives::{utils::format_ether, Address, Bytes, B256, U256};
 use alloy_provider::Provider;
 use alloy_sol_types::SolEvent;
@@ -24,12 +24,17 @@ pub struct Withdraw {
 
 pub struct WithdrawAction<P> {
     provider: P,
+    signer: SignerFn,
     action: Withdraw,
 }
 
 impl<P: Provider + Clone> WithdrawAction<P> {
-    pub const fn new(provider: P, action: Withdraw) -> Self {
-        Self { provider, action }
+    pub fn new(provider: P, signer: SignerFn, action: Withdraw) -> Self {
+        Self {
+            provider,
+            signer,
+            action,
+        }
     }
 }
 
@@ -86,17 +91,22 @@ where
 
         let contract = IL2ToL1MessagePasser::new(self.action.contract, &self.provider);
 
-        let tx = contract
+        // Build the transaction request
+        let call = contract
             .initiateWithdrawal(
                 self.action.target,
                 self.action.gas_limit,
                 self.action.data.clone(),
             )
-            .value(self.action.value)
-            .send()
-            .await?;
+            .value(self.action.value);
+        let tx_request = call.into_transaction_request();
 
-        let receipt = tx.get_receipt().await?;
+        // Sign externally
+        let signed_tx = (self.signer)(tx_request).await?;
+
+        // Broadcast the signed transaction
+        let pending = self.provider.send_raw_transaction(&signed_tx).await?;
+        let receipt = pending.get_receipt().await?;
 
         let (withdrawal_tx, withdrawal_hash) = parse_message_passed_event(&receipt)?;
         info!(

@@ -7,7 +7,7 @@ use action::{
     finalize::{Finalize, FinalizeAction},
     prove::{Prove, ProveAction},
     withdraw::{Withdraw, WithdrawAction},
-    Action,
+    Action, SignerFn,
 };
 use alloy_primitives::{utils::format_ether, Address, Bytes, U256};
 use alloy_provider::Provider;
@@ -183,6 +183,7 @@ where
 pub async fn process_pending_withdrawals<P1, P2>(
     l1_provider: P1,
     l2_provider: P2,
+    l1_signer: SignerFn,
     config: &config::Config,
 ) -> eyre::Result<()>
 where
@@ -224,6 +225,7 @@ where
                 if let Err(e) = finalize_withdrawal(
                     l1_provider.clone(),
                     l2_provider.clone(),
+                    l1_signer.clone(),
                     network.unichain.l1_portal,
                     config.eoa_address,
                     withdrawal,
@@ -242,6 +244,7 @@ where
                 if let Err(e) = prove_withdrawal(
                     l1_provider.clone(),
                     l2_provider.clone(),
+                    l1_signer.clone(),
                     network.unichain.l1_portal,
                     network.unichain.l1_dispute_game_factory,
                     withdrawal,
@@ -269,6 +272,7 @@ where
 async fn finalize_withdrawal<P1, P2>(
     l1_provider: P1,
     l2_provider: P2,
+    signer: SignerFn,
     portal_address: Address,
     proof_submitter: Address,
     withdrawal: &PendingWithdrawal,
@@ -285,7 +289,7 @@ where
         proof_submitter,
     };
 
-    let mut action = FinalizeAction::new(l1_provider, l2_provider, finalize);
+    let mut action = FinalizeAction::new(l1_provider, l2_provider, signer, finalize);
 
     if !action.is_ready().await? {
         info!(
@@ -330,6 +334,7 @@ where
 async fn prove_withdrawal<P1, P2>(
     l1_provider: P1,
     l2_provider: P2,
+    signer: SignerFn,
     portal_address: Address,
     factory_address: Address,
     withdrawal: &PendingWithdrawal,
@@ -347,7 +352,7 @@ where
         l2_block: withdrawal.l2_block,
     };
 
-    let mut action = ProveAction::new(l1_provider, l2_provider, prove);
+    let mut action = ProveAction::new(l1_provider, l2_provider, signer, prove);
 
     if !action.is_ready().await? {
         info!(
@@ -393,6 +398,7 @@ where
 /// Returns the withdrawal amount if a withdrawal was initiated, None otherwise.
 pub async fn maybe_initiate_withdrawal<P>(
     l2_provider: P,
+    l2_signer: SignerFn,
     config: &config::Config,
 ) -> eyre::Result<Option<U256>>
 where
@@ -443,7 +449,7 @@ where
         tx_hash: None,
     };
 
-    let mut action = WithdrawAction::new(l2_provider, withdraw);
+    let mut action = WithdrawAction::new(l2_provider, l2_signer, withdraw);
 
     match action.execute().await {
         Ok(result) => {
@@ -473,6 +479,7 @@ where
 pub async fn maybe_deposit<P1, P2>(
     l1_provider: P1,
     l2_provider: P2,
+    l1_signer: SignerFn,
     config: &config::Config,
 ) -> eyre::Result<Option<U256>>
 where
@@ -576,7 +583,7 @@ where
         message: Bytes::new(),
     };
 
-    let mut action = DepositAction::new(l1_provider, deposit_config);
+    let mut action = DepositAction::new(l1_provider, l1_signer, deposit_config);
 
     match action.execute().await {
         Ok(result) => {

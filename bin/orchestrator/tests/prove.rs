@@ -5,7 +5,7 @@
 //! - Generate storage proof and submit to L1
 //! - Execute real prove transaction
 
-use crate::setup::{load_test_config, setup_provider, setup_wallet_provider};
+use crate::setup::{load_test_config, setup_provider, setup_signer};
 use action::{
     prove::{Prove, ProveAction},
     Action,
@@ -45,9 +45,10 @@ async fn test_prove_action_execute() {
     );
     println!("EOA: {}", config.eoa_address);
 
-    // Use wallet provider for L1 (needs to sign transactions)
-    let l1_provider = setup_wallet_provider(&config.l1_rpc_url).await;
+    // Use provider and signer for L1 (needs to sign transactions)
+    let l1_provider = setup_provider(&config.l1_rpc_url).await;
     let l2_provider = setup_provider(&config.l2_rpc_url).await;
+    let l1_signer = setup_signer(config.network_config().ethereum.chain_id, l1_provider.clone());
 
     // Find pending withdrawals
     let state_provider = WithdrawalStateProvider::new(
@@ -105,7 +106,7 @@ async fn test_prove_action_execute() {
         l2_block: withdrawal.l2_block,
     };
 
-    let mut action = ProveAction::new(l1_provider, l2_provider, prove);
+    let mut action = ProveAction::new(l1_provider, l2_provider, l1_signer, prove);
 
     // Check if ready
     println!("\nChecking if action is ready...");

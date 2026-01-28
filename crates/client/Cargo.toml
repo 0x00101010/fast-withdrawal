@@ -13,6 +13,7 @@ alloy-primitives = { workspace = true }
 alloy-signer-local = { workspace = true }
 alloy-network = { workspace = true }
 alloy-rpc-types = { workspace = true, features = ["eth"] }
+alloy-consensus = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 reqwest = { workspace = true, features = ["json"] }
 thiserror.workspace = true

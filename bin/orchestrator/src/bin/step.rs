@@ -6,6 +6,7 @@
 //! - `deposit`: Check SpokePool balance and deposit from L1 if needed
 
 use clap::{Parser, Subcommand};
+use client::local_signer_fn;
 use orchestrator::{
     config::Config, maybe_deposit, maybe_initiate_withdrawal, process_pending_withdrawals,
 };
@@ -75,19 +76,23 @@ async fn main() -> eyre::Result<()> {
         Command::ProcessWithdrawals => {
             info!("Running: process-withdrawals");
 
-            let l1_provider = client::create_wallet_provider(&config.l1_rpc_url, &cli.private_key)?;
-            let l2_provider = client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
+            let l1_provider = client::create_provider(&config.l1_rpc_url).await?;
+            let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
+            let l1_signer =
+                local_signer_fn(&cli.private_key, network.ethereum.chain_id, l1_provider.clone())?;
 
-            process_pending_withdrawals(l1_provider, l2_provider, &config).await?;
+            process_pending_withdrawals(l1_provider, l2_provider, l1_signer, &config).await?;
 
             info!("Step completed: process-withdrawals");
         }
         Command::InitiateWithdrawal => {
             info!("Running: initiate-withdrawal");
 
-            let l2_provider = client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
+            let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
+            let l2_signer =
+                local_signer_fn(&cli.private_key, network.unichain.chain_id, l2_provider.clone())?;
 
-            let result = maybe_initiate_withdrawal(l2_provider, &config).await?;
+            let result = maybe_initiate_withdrawal(l2_provider, l2_signer, &config).await?;
 
             match result {
                 Some(amount) => {
@@ -103,10 +108,12 @@ async fn main() -> eyre::Result<()> {
         Command::Deposit => {
             info!("Running: deposit");
 
-            let l1_provider = client::create_wallet_provider(&config.l1_rpc_url, &cli.private_key)?;
-            let l2_provider = client::create_wallet_provider(&config.l2_rpc_url, &cli.private_key)?;
+            let l1_provider = client::create_provider(&config.l1_rpc_url).await?;
+            let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
+            let l1_signer =
+                local_signer_fn(&cli.private_key, network.ethereum.chain_id, l1_provider.clone())?;
 
-            let result = maybe_deposit(l1_provider, l2_provider, &config).await?;
+            let result = maybe_deposit(l1_provider, l2_provider, l1_signer, &config).await?;
 
             match result {
                 Some(amount) => {

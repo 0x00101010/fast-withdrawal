@@ -7,7 +7,7 @@ use action::{
 };
 use alloy_primitives::Address;
 use config::NetworkConfig;
-use setup::{load_test_config, setup_provider};
+use setup::{load_test_config, mock_signer, setup_provider};
 
 const fn create_claim(relayer: Address, network_config: &NetworkConfig) -> Claim {
     Claim {
@@ -35,7 +35,7 @@ async fn test_get_claimable_balance() -> eyre::Result<()> {
     println!();
 
     let provider = setup_provider(&config.l2_rpc_url).await;
-    let action = ClaimAction::new(provider, claim);
+    let action = ClaimAction::new(provider, mock_signer(), claim);
 
     // Verify action is ready
     println!("Checking if action is ready...");

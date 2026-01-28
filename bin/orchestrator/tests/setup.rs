@@ -1,10 +1,12 @@
 //! Common test setup utilities shared across integration tests.
 #![allow(dead_code)] // used in ignored tests
 
+use action::SignerFn;
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_signer_local::PrivateKeySigner;
 use orchestrator::config::Config;
 use serde::Deserialize;
+use std::sync::Arc;
 
 /// Local configuration overrides (git-ignored file)
 #[derive(Debug, Default, Deserialize)]
@@ -127,4 +129,31 @@ pub async fn setup_wallet_provider(url: &str) -> impl Provider + Clone {
     // Build provider with wallet for signing
     let url = url.parse().expect("Invalid L1 RPC URL");
     ProviderBuilder::new().wallet(wallet).connect_http(url)
+}
+
+/// Create a mock signer for tests that don't execute transactions.
+/// Will panic if actually called.
+pub fn mock_signer() -> SignerFn {
+    Arc::new(|_tx| Box::pin(async { panic!("mock signer should not be called") }))
+}
+
+/// Create a real SignerFn for tests that do execute transactions.
+///
+/// Requires a private key from either:
+/// - PRIVATE_KEY environment variable, or
+/// - tests/test-config.local.toml file
+///
+/// # Panics
+/// Panics if no private key is found or if the private key is invalid.
+pub fn setup_signer<P>(chain_id: u64, provider: P) -> SignerFn
+where
+    P: alloy_provider::Provider + Clone + 'static,
+{
+    let private_key = load_private_key().expect(
+        "Private key required for transaction signing.\n\
+         Set PRIVATE_KEY environment variable or create tests/test-config.local.toml\n\
+         See tests/test-config.local.toml.example for template.",
+    );
+
+    client::local_signer_fn(&private_key, chain_id, provider).expect("Failed to create local signer")
 }

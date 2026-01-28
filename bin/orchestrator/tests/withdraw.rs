@@ -1,4 +1,4 @@
-use crate::setup::{load_test_config, setup_provider, setup_wallet_provider};
+use crate::setup::{load_test_config, mock_signer, setup_provider, setup_signer};
 use action::{
     withdraw::{Withdraw, WithdrawAction},
     Action,
@@ -35,9 +35,9 @@ async fn test_withdraw_action_creation() {
     println!("Test Source: {}", config.eoa_address);
     println!("Test Target: {}", config.eoa_address);
 
-    let provider = setup_wallet_provider(&config.l2_rpc_url).await;
+    let provider = setup_provider(&config.l2_rpc_url).await;
     let withdraw = create_test_withdrawal(config.eoa_address, config.eoa_address);
-    let action = WithdrawAction::new(provider, withdraw);
+    let action = WithdrawAction::new(provider, mock_signer(), withdraw);
 
     let is_ready = action.is_ready().await.expect("Failed to check is_ready");
     assert!(is_ready);
@@ -52,7 +52,7 @@ async fn test_withdraw_action_validation() {
 
     // Test valid config
     let valid_config = create_test_withdrawal(config.eoa_address, config.eoa_address);
-    let action = WithdrawAction::new(provider.clone(), valid_config);
+    let action = WithdrawAction::new(provider.clone(), mock_signer(), valid_config);
 
     // Should not panic when checking is_ready
     let ready = action
@@ -63,7 +63,7 @@ async fn test_withdraw_action_validation() {
 
     // Test invalid config: zero target
     let mut invalid_config = create_test_withdrawal(config.eoa_address, Address::ZERO);
-    let action = WithdrawAction::new(provider.clone(), invalid_config.clone());
+    let action = WithdrawAction::new(provider.clone(), mock_signer(), invalid_config.clone());
 
     // Should still work - validation happens in is_ready, not construction
     let ready = action.is_ready().await.expect("Failed to check is_ready");
@@ -71,7 +71,7 @@ async fn test_withdraw_action_validation() {
 
     // Test invalid config: zero value
     invalid_config.value = U256::ZERO;
-    let action = WithdrawAction::new(provider.clone(), invalid_config);
+    let action = WithdrawAction::new(provider.clone(), mock_signer(), invalid_config);
     let ready = action.is_ready().await.expect("Failed to check is_ready");
     assert!(!ready);
 }
@@ -87,7 +87,7 @@ async fn test_withdraw_action_is_completed() {
     let withdraw_config = create_test_withdrawal(config.eoa_address, config.eoa_address);
 
     // Create withdrawal action
-    let action = WithdrawAction::new(provider, withdraw_config);
+    let action = WithdrawAction::new(provider, mock_signer(), withdraw_config);
 
     // Check if completed (should be false for random parameters we just created)
     let is_completed = action
@@ -119,7 +119,7 @@ async fn test_withdraw_action_is_ready_checks_balance() {
     if balance > U256::ZERO {
         // Set amount to half of balance
         withdraw_config.value = balance / U256::from(2);
-        let action = WithdrawAction::new(provider.clone(), withdraw_config.clone());
+        let action = WithdrawAction::new(provider.clone(), mock_signer(), withdraw_config.clone());
 
         let is_ready = action.is_ready().await.expect("Failed to check is_ready");
         println!(
@@ -136,7 +136,7 @@ async fn test_withdraw_action_is_ready_checks_balance() {
 
     // Create withdrawal with amount MORE than balance
     withdraw_config.value = balance + U256::from(1_000_000);
-    let action = WithdrawAction::new(provider, withdraw_config.clone());
+    let action = WithdrawAction::new(provider, mock_signer(), withdraw_config.clone());
 
     let is_ready = action.is_ready().await.expect("Failed to check is_ready");
     println!(
@@ -153,13 +153,15 @@ async fn test_withdraw_action_is_ready_checks_balance() {
 #[ignore = "requires real funds and submits actual transaction - run with: just run-withdraw"]
 async fn test_withdraw_action_execute() {
     let config = load_test_config();
+    let network_config = config.network_config();
 
     println!("⚠️  WARNING: This test will execute a REAL withdrawal transaction!");
     println!("This will initiate an L2→L1 withdrawal that takes 7 days to finalize.");
-    println!("Setting up wallet provider for transaction signing...");
+    println!("Setting up provider and signer for transaction signing...");
 
-    // Use wallet provider instead of read-only provider
-    let provider = setup_wallet_provider(&config.l2_rpc_url).await;
+    // Use provider and signer
+    let provider = setup_provider(&config.l2_rpc_url).await;
+    let signer = setup_signer(network_config.unichain.chain_id, provider.clone());
 
     println!("\nTest Source (L2): {}", config.eoa_address);
     println!("Test Target (L1): {}", config.eoa_address);
@@ -177,7 +179,7 @@ async fn test_withdraw_action_execute() {
     println!("  Data: {} bytes", withdraw.data.len());
 
     // Create withdrawal action
-    let mut action = WithdrawAction::new(provider, withdraw);
+    let mut action = WithdrawAction::new(provider, signer, withdraw);
 
     // Verify action is ready
     let is_ready = action.is_ready().await.expect("Failed to check is_ready");
