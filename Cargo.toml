@@ -44,6 +44,10 @@ alloy-signer-local = { version = "1.4.3", default-features = false }
 alloy-network = { version = "1.4.3", default-features = false }
 alloy-rpc-types = { version = "1.4.3", default-features = false }
 alloy-rpc-types-eth = { version = "1.4.3", default-features = false }
+alloy-consensus = { version = "1.4.3", default-features = false }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 
 
 # Async runtime

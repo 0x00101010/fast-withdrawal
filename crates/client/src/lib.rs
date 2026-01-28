@@ -1,3 +1,7 @@
+mod remote_signer;
+
+pub use remote_signer::RemoteSigner;
+
 use alloy_network::EthereumWallet;
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_signer_local::PrivateKeySigner;
