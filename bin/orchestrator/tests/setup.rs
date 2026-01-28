@@ -145,16 +145,12 @@ pub fn mock_signer() -> SignerFn {
 ///
 /// # Panics
 /// Panics if no private key is found or if the private key is invalid.
-pub fn setup_signer<P>(chain_id: u64, provider: P) -> SignerFn
-where
-    P: alloy_provider::Provider + Clone + 'static,
-{
+pub fn setup_signer() -> SignerFn {
     let private_key = load_private_key().expect(
         "Private key required for transaction signing.\n\
          Set PRIVATE_KEY environment variable or create tests/test-config.local.toml\n\
          See tests/test-config.local.toml.example for template.",
     );
 
-    client::local_signer_fn(&private_key, chain_id, provider)
-        .expect("Failed to create local signer")
+    client::local_signer_fn(&private_key).expect("Failed to create local signer")
 }

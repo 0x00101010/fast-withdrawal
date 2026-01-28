@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 binding.workspace = true
+client.workspace = true
 withdrawal.workspace = true
 
 alloy-sol-types = { workspace = true }

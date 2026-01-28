@@ -247,6 +247,7 @@ where
                     l1_signer.clone(),
                     network.unichain.l1_portal,
                     network.unichain.l1_dispute_game_factory,
+                    config.eoa_address,
                     withdrawal,
                     config.dry_run,
                 )
@@ -287,6 +288,7 @@ where
         withdrawal: withdrawal.transaction.clone(),
         withdrawal_hash: withdrawal.hash,
         proof_submitter,
+        from: proof_submitter,
     };
 
     let mut action = FinalizeAction::new(l1_provider, l2_provider, signer, finalize);
@@ -331,12 +333,14 @@ where
 }
 
 /// Prove a single initiated withdrawal.
+#[allow(clippy::too_many_arguments)]
 async fn prove_withdrawal<P1, P2>(
     l1_provider: P1,
     l2_provider: P2,
     signer: SignerFn,
     portal_address: Address,
     factory_address: Address,
+    from: Address,
     withdrawal: &PendingWithdrawal,
     dry_run: bool,
 ) -> eyre::Result<()>
@@ -350,6 +354,7 @@ where
         withdrawal: withdrawal.transaction.clone(),
         withdrawal_hash: withdrawal.hash,
         l2_block: withdrawal.l2_block,
+        from,
     };
 
     let mut action = ProveAction::new(l1_provider, l2_provider, signer, prove);

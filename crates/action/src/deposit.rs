@@ -140,10 +140,13 @@ where
                 self.config.message.clone(),
             )
             .value(self.config.input_amount);
-        let tx_request = call.into_transaction_request();
+        let tx_request = call.into_transaction_request().from(self.config.depositor);
+
+        // Fill transaction fields (nonce, gas, fees) using our provider
+        let filled_tx = client::fill_transaction(tx_request, &self.provider).await?;
 
         // Sign externally
-        let signed_tx = (self.signer)(tx_request).await?;
+        let signed_tx = (self.signer)(filled_tx).await?;
 
         // Broadcast the signed transaction
         let pending_tx = self.provider.send_raw_transaction(&signed_tx).await?;

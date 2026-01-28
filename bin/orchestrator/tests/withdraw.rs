@@ -153,7 +153,6 @@ async fn test_withdraw_action_is_ready_checks_balance() {
 #[ignore = "requires real funds and submits actual transaction - run with: just run-withdraw"]
 async fn test_withdraw_action_execute() {
     let config = load_test_config();
-    let network_config = config.network_config();
 
     println!("⚠️  WARNING: This test will execute a REAL withdrawal transaction!");
     println!("This will initiate an L2→L1 withdrawal that takes 7 days to finalize.");
@@ -161,7 +160,7 @@ async fn test_withdraw_action_execute() {
 
     // Use provider and signer
     let provider = setup_provider(&config.l2_rpc_url).await;
-    let signer = setup_signer(network_config.unichain.chain_id, provider.clone());
+    let signer = setup_signer();
 
     println!("\nTest Source (L2): {}", config.eoa_address);
     println!("Test Target (L1): {}", config.eoa_address);

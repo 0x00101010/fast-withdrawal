@@ -6,6 +6,7 @@ pub mod withdraw;
 
 use alloy_primitives::{Bytes, TxHash, U256};
 use alloy_rpc_types::TransactionRequest;
+pub use client::fill_transaction;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 /// A function that signs a transaction request and returns signed bytes.

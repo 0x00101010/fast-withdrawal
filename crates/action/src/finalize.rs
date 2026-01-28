@@ -21,6 +21,8 @@ pub struct Finalize {
     pub withdrawal_hash: WithdrawalHash,
     /// Address that submitted the proof (usually the same as withdrawal sender)
     pub proof_submitter: Address,
+    /// Address that will submit the finalize transaction
+    pub from: Address,
 }
 
 /// Action to finalize a proven withdrawal on L1.
@@ -158,10 +160,13 @@ where
             self.action.withdrawal.clone(),
             self.action.proof_submitter,
         );
-        let tx_request = call.into_transaction_request();
+        let tx_request = call.into_transaction_request().from(self.action.from);
+
+        // Fill transaction fields (nonce, gas, fees) using our provider
+        let filled_tx = client::fill_transaction(tx_request, &self.l1_provider).await?;
 
         // Sign externally
-        let signed_tx = (self.signer)(tx_request).await?;
+        let signed_tx = (self.signer)(filled_tx).await?;
 
         // Broadcast the signed transaction
         let pending = self.l1_provider.send_raw_transaction(&signed_tx).await?;
@@ -211,6 +216,7 @@ mod tests {
                 "1111111111111111111111111111111111111111111111111111111111111111"
             ),
             proof_submitter: address!("5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"),
+            from: address!("5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"),
         };
 
         FinalizeAction::new(MockProvider, MockProvider, mock_signer(), finalize)

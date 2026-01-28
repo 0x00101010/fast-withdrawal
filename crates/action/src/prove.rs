@@ -22,6 +22,8 @@ pub struct Prove {
     pub withdrawal_hash: WithdrawalHash,
     /// L2 block number where the withdrawal was initiated
     pub l2_block: u64,
+    /// Address that will submit the proof transaction
+    pub from: Address,
 }
 
 /// Action to prove a withdrawal on L1.
@@ -119,10 +121,13 @@ where
             proof_params.output_root_proof,
             proof_params.withdrawal_proof,
         );
-        let tx_request = call.into_transaction_request();
+        let tx_request = call.into_transaction_request().from(self.action.from);
+
+        // Fill transaction fields (nonce, gas, fees) using our provider
+        let filled_tx = client::fill_transaction(tx_request, &self.l1_provider).await?;
 
         // Sign externally
-        let signed_tx = (self.signer)(tx_request).await?;
+        let signed_tx = (self.signer)(filled_tx).await?;
 
         // Broadcast the signed transaction
         let pending = self.l1_provider.send_raw_transaction(&signed_tx).await?;
@@ -171,6 +176,7 @@ mod tests {
                 "1111111111111111111111111111111111111111111111111111111111111111"
             ),
             l2_block: 42276959,
+            from: address!("5CFFA347b0aE99cc01E5c01714cA5658e54a23D1"),
         };
 
         ProveAction::new(MockProvider, MockProvider, mock_signer(), prove)

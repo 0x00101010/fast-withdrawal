@@ -99,10 +99,13 @@ where
                 self.action.data.clone(),
             )
             .value(self.action.value);
-        let tx_request = call.into_transaction_request();
+        let tx_request = call.into_transaction_request().from(self.action.source);
+
+        // Fill transaction fields (nonce, gas, fees) using our provider
+        let filled_tx = client::fill_transaction(tx_request, &self.provider).await?;
 
         // Sign externally
-        let signed_tx = (self.signer)(tx_request).await?;
+        let signed_tx = (self.signer)(filled_tx).await?;
 
         // Broadcast the signed transaction
         let pending = self.provider.send_raw_transaction(&signed_tx).await?;

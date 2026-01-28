@@ -78,11 +78,7 @@ async fn main() -> eyre::Result<()> {
 
             let l1_provider = client::create_provider(&config.l1_rpc_url).await?;
             let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
-            let l1_signer = local_signer_fn(
-                &cli.private_key,
-                network.ethereum.chain_id,
-                l1_provider.clone(),
-            )?;
+            let l1_signer = local_signer_fn(&cli.private_key)?;
 
             process_pending_withdrawals(l1_provider, l2_provider, l1_signer, &config).await?;
 
@@ -92,11 +88,7 @@ async fn main() -> eyre::Result<()> {
             info!("Running: initiate-withdrawal");
 
             let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
-            let l2_signer = local_signer_fn(
-                &cli.private_key,
-                network.unichain.chain_id,
-                l2_provider.clone(),
-            )?;
+            let l2_signer = local_signer_fn(&cli.private_key)?;
 
             let result = maybe_initiate_withdrawal(l2_provider, l2_signer, &config).await?;
 
@@ -116,11 +108,7 @@ async fn main() -> eyre::Result<()> {
 
             let l1_provider = client::create_provider(&config.l1_rpc_url).await?;
             let l2_provider = client::create_provider(&config.l2_rpc_url).await?;
-            let l1_signer = local_signer_fn(
-                &cli.private_key,
-                network.ethereum.chain_id,
-                l1_provider.clone(),
-            )?;
+            let l1_signer = local_signer_fn(&cli.private_key)?;
 
             let result = maybe_deposit(l1_provider, l2_provider, l1_signer, &config).await?;
 

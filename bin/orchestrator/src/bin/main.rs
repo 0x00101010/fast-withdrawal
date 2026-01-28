@@ -115,18 +115,12 @@ async fn main() -> eyre::Result<()> {
                     config.eoa_address,
                     network.unichain.chain_id,
                 );
-                (
-                    remote_signer_fn(l1_remote, l1_provider.clone()),
-                    remote_signer_fn(l2_remote, l2_provider.clone()),
-                )
+                (remote_signer_fn(l1_remote), remote_signer_fn(l2_remote))
             }
             (None, Some(pk)) => {
                 info!("Using local private key for signing");
-                let l1_signer =
-                    local_signer_fn(pk, network.ethereum.chain_id, l1_provider.clone())?;
-                let l2_signer =
-                    local_signer_fn(pk, network.unichain.chain_id, l2_provider.clone())?;
-                (l1_signer, l2_signer)
+                let signer = local_signer_fn(pk)?;
+                (signer.clone(), signer)
             }
             (None, None) => {
                 eyre::bail!(

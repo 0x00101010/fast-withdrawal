@@ -48,10 +48,7 @@ async fn test_prove_action_execute() {
     // Use provider and signer for L1 (needs to sign transactions)
     let l1_provider = setup_provider(&config.l1_rpc_url).await;
     let l2_provider = setup_provider(&config.l2_rpc_url).await;
-    let l1_signer = setup_signer(
-        config.network_config().ethereum.chain_id,
-        l1_provider.clone(),
-    );
+    let l1_signer = setup_signer();
 
     // Find pending withdrawals
     let state_provider = WithdrawalStateProvider::new(
@@ -107,6 +104,7 @@ async fn test_prove_action_execute() {
         withdrawal: withdrawal.transaction.clone(),
         withdrawal_hash: withdrawal.hash,
         l2_block: withdrawal.l2_block,
+        from: config.eoa_address,
     };
 
     let mut action = ProveAction::new(l1_provider, l2_provider, l1_signer, prove);
@@ -154,6 +152,7 @@ async fn test_prove_action_execute() {
 /// 3. Computing the hash of our output root proof
 /// 4. Comparing them to see if they match
 #[tokio::test]
+#[ignore = "requires inflight withdrawal and dispute game created"]
 async fn test_debug_output_root_proof() {
     use alloy_primitives::keccak256;
     use binding::opstack::{IDisputeGameFactory, IFaultDisputeGame};

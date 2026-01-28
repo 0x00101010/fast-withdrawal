@@ -2,7 +2,7 @@ mod remote_signer;
 
 use alloy_consensus::TxEnvelope;
 use alloy_network::{eip2718::Encodable2718, EthereumWallet, TransactionBuilder};
-use alloy_primitives::{Address, Bytes};
+use alloy_primitives::Bytes;
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::TransactionRequest;
 use alloy_signer_local::PrivateKeySigner;
@@ -69,56 +69,33 @@ pub fn create_wallet_provider(
     Ok(provider)
 }
 
-/// Create a SignerFn from a RemoteSigner and provider.
+/// Create a SignerFn from a RemoteSigner.
 ///
-/// The provider is used to fill transaction fields (nonce, gas, fees) before
-/// sending to the remote signer-proxy for signing.
-pub fn remote_signer_fn<P>(remote: RemoteSigner, provider: P) -> SignerFn
-where
-    P: Provider + Clone + 'static,
-{
-    let from_address = remote.address();
-    let chain_id = remote.chain_id();
-
+/// The transaction must be fully filled (nonce, gas, fees, chain_id, from) before
+/// being passed to this signer. Use `fill_transaction` at the call site.
+pub fn remote_signer_fn(remote: RemoteSigner) -> SignerFn {
     Arc::new(move |tx| {
         let remote = remote.clone();
-        let provider = provider.clone();
-        Box::pin(async move {
-            let filled_tx = fill_transaction(tx, &provider, from_address, chain_id).await?;
-            remote.sign_transaction(filled_tx).await
-        })
+        Box::pin(async move { remote.sign_transaction(tx).await })
     })
 }
 
-/// Create a SignerFn from a local private key and provider.
+/// Create a SignerFn from a local private key.
 ///
-/// The provider is used to fill transaction fields (nonce, gas, fees) before
-/// signing locally with the private key.
-pub fn local_signer_fn<P>(
-    private_key: &str,
-    chain_id: u64,
-    provider: P,
-) -> Result<SignerFn, ClientError>
-where
-    P: Provider + Clone + 'static,
-{
+/// The transaction must be fully filled (nonce, gas, fees, chain_id, from) before
+/// being passed to this signer. Use `fill_transaction` at the call site.
+pub fn local_signer_fn(private_key: &str) -> Result<SignerFn, ClientError> {
     let signer: PrivateKeySigner = private_key
         .parse()
         .map_err(|e| ClientError::InvalidPrivateKey(format!("{}", e)))?;
-    let from_address = signer.address();
     let wallet = EthereumWallet::from(signer);
 
     Ok(Arc::new(move |tx: TransactionRequest| {
         let wallet = wallet.clone();
-        let provider = provider.clone();
         Box::pin(async move {
-            let filled_tx = fill_transaction(tx, &provider, from_address, chain_id).await?;
-
             // Build and sign the typed transaction
-            let tx_envelope: TxEnvelope = filled_tx
-                .build(&wallet)
-                .await
-                .map_err(|e| eyre::eyre!("{}", e))?;
+            let tx_envelope: TxEnvelope =
+                tx.build(&wallet).await.map_err(|e| eyre::eyre!("{}", e))?;
 
             // Encode to EIP-2718 bytes
             let mut encoded = Vec::new();
@@ -129,23 +106,23 @@ where
 }
 
 /// Fill missing transaction fields using the provider.
-async fn fill_transaction<P>(
+///
+/// The `from` address must be set on the transaction request before calling this function.
+/// This function will fill in chain_id, nonce, gas, and fee parameters if not already set.
+pub async fn fill_transaction<P>(
     mut tx: TransactionRequest,
     provider: &P,
-    from: Address,
-    chain_id: u64,
 ) -> eyre::Result<TransactionRequest>
 where
     P: Provider,
 {
-    // Set from address
-    if tx.from.is_none() {
-        tx.from = Some(from);
-    }
+    let from = tx
+        .from
+        .ok_or_else(|| eyre::eyre!("Transaction must have 'from' address set"))?;
 
-    // Set chain_id
+    // Get chain_id from provider if not set
     if tx.chain_id.is_none() {
-        tx.chain_id = Some(chain_id);
+        tx.chain_id = Some(provider.get_chain_id().await?);
     }
 
     // Get nonce if not set

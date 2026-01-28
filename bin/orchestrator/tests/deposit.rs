@@ -187,7 +187,7 @@ async fn test_deposit_action_execute() {
 
     // Use provider and signer
     let provider = setup_provider(&config.l1_rpc_url).await;
-    let signer = setup_signer(network_config.ethereum.chain_id, provider.clone());
+    let signer = setup_signer();
 
     println!("\nTest Depositor: {}", config.eoa_address);
     println!("Make sure the depositor has sufficient ETH for the deposit + gas");

@@ -106,13 +106,30 @@ dry_run = false
 metrics_port = 9090
 ```
 
-### Environment Variables
+### Signing Configuration
 
-The orchestrator requires a funded wallet. Set your private key:
+The orchestrator supports two signing methods:
+
+#### Option 1: Remote Signer (Production)
+
+For production deployments, use a remote signer service (e.g., HSM-backed signer-proxy):
+
+```toml
+[remote_signer]
+proxy_url = "http://localhost:9060"
+```
+
+The remote signer receives `eth_signTransaction` JSON-RPC requests and returns signed transaction bytes.
+
+#### Option 2: Local Private Key (Development/Testing)
+
+For local testing, provide your private key inline with the command:
 
 ```bash
-export PRIVATE_KEY=0x...
+PRIVATE_KEY=0x... just run
 ```
+
+**Note:** For local testing, using `PRIVATE_KEY` is the recommended approach. Never commit private keys to version control or use production keys for testing.
 
 ## Running
 
@@ -124,28 +141,26 @@ export PRIVATE_KEY=0x...
 ### Build
 
 ```bash
-# Build all targets
-cargo build --workspace --all-targets
-
-# Or use justfile
 just build
+
+# Or with cargo directly
+cargo build --workspace --all-targets
 ```
 
 ### Run
 
 ```bash
-# Run with default config.toml
-cargo run --bin orchestrator
+# Run with local signing (for testing)
+PRIVATE_KEY=0x... just run
 
 # Run with custom config
-cargo run --bin orchestrator -- --config path/to/config.toml
+PRIVATE_KEY=0x... just run -- --config path/to/config.toml
 
 # Run in dry-run mode (no transactions)
-cargo run --bin orchestrator -- --dry-run
+PRIVATE_KEY=0x... just run -- --dry-run
 
-# Or use justfile
+# When using remote signer (no PRIVATE_KEY needed)
 just run
-just run -- --dry-run
 ```
 
 ### Step Commands (Manual Operations)
@@ -154,13 +169,13 @@ For testing individual operations:
 
 ```bash
 # Process pending withdrawals (prove + finalize)
-just step-process-withdrawals
+PRIVATE_KEY=0x... just step-process-withdrawals
 
 # Initiate L2→L1 withdrawal if threshold met
-just step-initiate-withdrawal
+PRIVATE_KEY=0x... just step-initiate-withdrawal
 
 # Deposit from L1 to L2 if needed
-just step-deposit
+PRIVATE_KEY=0x... just step-deposit
 ```
 
 ## Metrics
@@ -198,10 +213,10 @@ just test
 just test --profile all
 
 # Run specific integration tests (require testnet funds)
-just run-deposit
-just run-withdraw
-just run-prove
-just run-finalize
+PRIVATE_KEY=0x... just run-deposit
+PRIVATE_KEY=0x... just run-withdraw
+PRIVATE_KEY=0x... just run-prove
+PRIVATE_KEY=0x... just run-finalize
 ```
 
 ### Linting
