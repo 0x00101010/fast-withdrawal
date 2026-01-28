@@ -44,7 +44,10 @@ async fn test_finalize_action_execute() {
     // Use provider and signer for L1 (needs to sign transactions)
     let l1_provider = setup_provider(&config.l1_rpc_url).await;
     let l2_provider = setup_provider(&config.l2_rpc_url).await;
-    let l1_signer = setup_signer(config.network_config().ethereum.chain_id, l1_provider.clone());
+    let l1_signer = setup_signer(
+        config.network_config().ethereum.chain_id,
+        l1_provider.clone(),
+    );
 
     // Find pending withdrawals
     let state_provider = WithdrawalStateProvider::new(

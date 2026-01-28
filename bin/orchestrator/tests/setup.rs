@@ -155,5 +155,6 @@ where
          See tests/test-config.local.toml.example for template.",
     );
 
-    client::local_signer_fn(&private_key, chain_id, provider).expect("Failed to create local signer")
+    client::local_signer_fn(&private_key, chain_id, provider)
+        .expect("Failed to create local signer")
 }
