@@ -1,0 +1,42 @@
+services:
+  signer-proxy:
+    build:
+      context: ../../signer-proxy
+      dockerfile: ../fast-withdrawal/deploy/Dockerfile.signer-proxy
+    ports:
+      - "9061:9061"  # Health check (external)
+    environment:
+      - DISABLE_MTLS=true  # Plain HTTP for internal communication
+      - ENCLAVE_APP_ID
+      - ENCLAVE_API_KEY
+      - ENCLAVE_ENDPOINT
+      - ENCLAVE_PCR0
+      - ENCLAVE_PCR8
+      - KMS_KEY_ID
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9061/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - internal
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: ./deploy/Dockerfile.orchestrator
+    ports:
+      - "9090:9090"  # Prometheus metrics
+    volumes:
+      - ./config.toml:/config/config.toml:ro
+    environment:
+      - RUST_LOG=info
+    depends_on:
+      signer-proxy:
+        condition: service_healthy
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge

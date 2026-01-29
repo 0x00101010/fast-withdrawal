@@ -37,3 +37,6 @@ plans/
 **/test-config.local.toml
 **/.env.local
 *.keystore
+
+# Deployment secrets
+deploy/.env

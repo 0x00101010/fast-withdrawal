@@ -1,0 +1,23 @@
+# RPC endpoints
+l1_rpc_url = "https://eth-mainnet.g.alchemy.com/v2/YOUR_KEY"
+l2_rpc_url = "https://unichain-mainnet.g.alchemy.com/v2/YOUR_KEY"
+
+network = "Mainnet"
+eoa_address = "0xYOUR_EOA_ADDRESS"
+
+[remote_signer]
+proxy_url = "http://signer-proxy:9060"
+
+# Thresholds
+spoke_pool_target_wei = "75000000000000000000"  # 75 ETH
+spoke_pool_floor_wei = "20000000000000000000"   # 20 ETH
+withdrawal_threshold_wei = "75000000000000000000"  # 75 ETH
+gas_buffer_wei = "10000000000000000"  # 0.01 ETH
+
+# Timing
+deposit_lookback_secs = 43200      # 12 hours
+withdrawal_lookback_secs = 1209600 # 2 weeks
+cycle_interval_secs = 120          # 2 minutes (mainnet)
+
+dry_run = false
+metrics_port = 9090
